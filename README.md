@@ -122,6 +122,8 @@ services:
     environment:
       - UC_CONFIG_HOME=/data
       - UC_INTEGRATION_HTTP_PORT=9090
+      - UC_INTEGRATION_INTERFACE=0.0.0.0
+      - PYTHONPATH=/app
     restart: unless-stopped
 ```
 
