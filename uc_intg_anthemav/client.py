@@ -51,53 +51,75 @@ class AnthemClient:
                     
                     _LOG.info(f"Connecting to {self._device_config.name} at {self._device_config.ip_address}:{self._device_config.port} (attempt {attempt + 1}/{max_retries})")
                     
-                    self._reader, self._writer = await asyncio.wait_for(
-                        asyncio.open_connection(
-                            self._device_config.ip_address,
-                            self._device_config.port
-                        ),
-                        timeout=self._device_config.timeout
-                    )
+                    try:
+                        self._reader, self._writer = await asyncio.wait_for(
+                            asyncio.open_connection(
+                                self._device_config.ip_address,
+                                self._device_config.port
+                            ),
+                            timeout=self._device_config.timeout
+                        )
+                    except asyncio.TimeoutError:
+                        _LOG.error(f"Connection timeout after {self._device_config.timeout}s")
+                        raise
+                    except OSError as e:
+                        _LOG.error(f"OSError during connection: {e} (errno: {e.errno if hasattr(e, 'errno') else 'N/A'})")
+                        raise
                     
                     self._connected = True
-                    _LOG.info(f"Connected to {self._device_config.name}")
+                    _LOG.info(f"TCP connection established to {self._device_config.name}")
+                    
+                    peer = self._writer.get_extra_info('peername')
+                    sock = self._writer.get_extra_info('socket')
+                    _LOG.info(f"Connection details - Peer: {peer}, Socket: {sock}")
                     
                     self._listen_task = asyncio.create_task(self._listen())
+                    _LOG.info(f"Listen task created for {self._device_config.name}")
+                    
+                    await asyncio.sleep(0.2)
+                    
+                    _LOG.info("Sending initialization sequence...")
+                    await self._send_command("ECH0")
                     await asyncio.sleep(0.1)
                     
-                    _LOG.info(f"Listen task started for {self._device_config.name}")
-                    
-                    await self._send_command("ECH0")
-                    await asyncio.sleep(0.05)
-                    
                     await self._send_command("ICN?")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.2)
                     
                     await self._send_command("Z1POW?")
+                    await asyncio.sleep(0.1)
+                    
+                    _LOG.info(f"Initialization sequence complete for {self._device_config.name}")
                     
                     return True
                     
             except asyncio.TimeoutError:
                 _LOG.error(f"Connection timeout to {self._device_config.name} (attempt {attempt + 1})")
+                await self.disconnect()
                 if attempt < max_retries - 1:
+                    _LOG.info(f"Retrying in {retry_delay}s...")
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2
             except OSError as e:
                 _LOG.error(f"Network error connecting to {self._device_config.name}: {e} (attempt {attempt + 1})")
+                await self.disconnect()
                 if attempt < max_retries - 1:
+                    _LOG.info(f"Retrying in {retry_delay}s...")
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2
             except Exception as e:
-                _LOG.error(f"Connection error to {self._device_config.name}: {e} (attempt {attempt + 1})")
+                _LOG.error(f"Unexpected connection error to {self._device_config.name}: {e} (attempt {attempt + 1})", exc_info=True)
+                await self.disconnect()
                 if attempt < max_retries - 1:
+                    _LOG.info(f"Retrying in {retry_delay}s...")
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2
         
+        _LOG.error(f"Failed to connect to {self._device_config.name} after {max_retries} attempts")
         return False
     
     async def disconnect(self) -> None:
         async with self._lock:
-            if not self._connected:
+            if not self._connected and not self._writer:
                 return
             
             _LOG.info(f"Disconnecting from {self._device_config.name}")
@@ -107,15 +129,18 @@ class AnthemClient:
                 try:
                     await self._listen_task
                 except asyncio.CancelledError:
-                    pass
+                    _LOG.debug("Listen task cancelled")
+                except Exception as e:
+                    _LOG.error(f"Error cancelling listen task: {e}")
                 self._listen_task = None
             
             if self._writer:
                 try:
                     self._writer.close()
                     await self._writer.wait_closed()
+                    _LOG.debug("Writer closed successfully")
                 except Exception as e:
-                    _LOG.debug(f"Error closing writer: {e}")
+                    _LOG.error(f"Error closing writer: {e}")
             
             self._connected = False
             self._reader = None
@@ -129,63 +154,95 @@ class AnthemClient:
         
         try:
             cmd_bytes = f"{command}\r".encode('ascii')
+            _LOG.debug(f"Sending {len(cmd_bytes)} bytes: {cmd_bytes}")
             self._writer.write(cmd_bytes)
             await self._writer.drain()
             _LOG.info(f"Sent command: {command}")
             return True
         except Exception as e:
-            _LOG.error(f"Error sending command {command}: {e}")
+            _LOG.error(f"Error sending command {command}: {e}", exc_info=True)
             self._connected = False
             return False
     
     async def _listen(self) -> None:
         buffer = ""
+        _LOG.info(f"Listen loop started for {self._device_config.name}")
+        
+        receive_count = 0
         
         while self._connected and self._reader:
             try:
+                _LOG.debug(f"Waiting for data (receive #{receive_count + 1})...")
                 data = await asyncio.wait_for(
                     self._reader.read(1024),
-                    timeout=60.0
+                    timeout=120.0
                 )
                 
                 if not data:
-                    _LOG.warning(f"Connection closed by {self._device_config.name}")
+                    _LOG.warning(f"Connection closed by {self._device_config.name} (empty read)")
                     self._connected = False
                     break
                 
-                decoded = data.decode('ascii', errors='ignore')
-                buffer += decoded
+                receive_count += 1
+                _LOG.info(f"Received {len(data)} bytes (receive #{receive_count}): {data}")
                 
+                try:
+                    decoded = data.decode('ascii', errors='ignore')
+                    _LOG.debug(f"Decoded string: '{decoded}' (len={len(decoded)})")
+                    buffer += decoded
+                except Exception as e:
+                    _LOG.error(f"Error decoding data: {e}")
+                    continue
+                
+                _LOG.debug(f"Current buffer: '{buffer}' (len={len(buffer)})")
+                
+                lines_processed = 0
                 while '\r' in buffer or '\n' in buffer:
                     if '\r' in buffer:
                         line, buffer = buffer.split('\r', 1)
+                        _LOG.debug(f"Split on \\r: line='{line}', remaining buffer='{buffer}'")
                     elif '\n' in buffer:
                         line, buffer = buffer.split('\n', 1)
+                        _LOG.debug(f"Split on \\n: line='{line}', remaining buffer='{buffer}'")
                     
                     line = line.strip()
                     
                     if line:
+                        lines_processed += 1
+                        _LOG.info(f"Processing line {lines_processed}: '{line}'")
                         await self._process_response(line)
+                    else:
+                        _LOG.debug("Empty line after strip, skipping")
+                
+                if lines_processed > 0:
+                    _LOG.debug(f"Processed {lines_processed} lines from this receive")
                 
             except asyncio.TimeoutError:
+                _LOG.debug("Read timeout (120s), continuing...")
                 continue
+            except asyncio.CancelledError:
+                _LOG.info("Listen task cancelled")
+                break
             except Exception as e:
-                _LOG.error(f"Error in listen loop: {e}")
+                _LOG.error(f"Error in listen loop: {e}", exc_info=True)
                 self._connected = False
                 break
         
-        _LOG.info(f"Listen task ended for {self._device_config.name}")
+        _LOG.info(f"Listen loop ended for {self._device_config.name} (received {receive_count} messages total)")
     
     async def _process_response(self, response: str) -> None:
-        _LOG.info(f"Received: {response}")
+        _LOG.info(f"RECEIVED: {response}")
         
-        self._update_state_from_response(response)
+        try:
+            self._update_state_from_response(response)
+        except Exception as e:
+            _LOG.error(f"Error updating state from response '{response}': {e}", exc_info=True)
         
         if self._update_callback:
             try:
                 self._update_callback(response)
             except Exception as e:
-                _LOG.error(f"Error in update callback: {e}")
+                _LOG.error(f"Error in update callback: {e}", exc_info=True)
     
     def _update_state_from_response(self, response: str) -> None:
         if response.startswith("IDM"):
@@ -236,22 +293,26 @@ class AnthemClient:
                 if "POW" in response:
                     power = "1" in response
                     self._state_cache[zone_key]["power"] = power
+                    _LOG.debug(f"Zone {zone_num} power: {power}")
                 
                 elif "VOL" in response:
                     vol_match = re.search(r'VOL(-?\d+)', response)
                     if vol_match:
                         volume = int(vol_match.group(1))
                         self._state_cache[zone_key]["volume"] = volume
+                        _LOG.debug(f"Zone {zone_num} volume: {volume}dB")
                 
                 elif "MUT" in response:
                     muted = "1" in response
                     self._state_cache[zone_key]["muted"] = muted
+                    _LOG.debug(f"Zone {zone_num} muted: {muted}")
                 
                 elif "INP" in response:
                     inp_match = re.search(r'INP(\d+)', response)
                     if inp_match:
                         input_num = int(inp_match.group(1))
                         self._state_cache[zone_key]["input"] = input_num
+                        _LOG.debug(f"Zone {zone_num} input: {input_num}")
                         
                         if input_num in self._input_names:
                             self._state_cache[zone_key]["input_name"] = self._input_names[input_num]
@@ -261,12 +322,14 @@ class AnthemClient:
                     if inp_match:
                         input_name = inp_match.group(1)
                         self._state_cache[zone_key]["input_name"] = input_name
+                        _LOG.debug(f"Zone {zone_num} input name: {input_name}")
                 
                 elif "AIC" in response:
                     format_match = re.search(r'AIC"([^"]*)"', response)
                     if format_match:
                         audio_format = format_match.group(1)
                         self._state_cache[zone_key]["audio_format"] = audio_format
+                        _LOG.debug(f"Zone {zone_num} audio format: {audio_format}")
     
     async def _discover_input_names(self) -> None:
         if self._input_count == 0:
