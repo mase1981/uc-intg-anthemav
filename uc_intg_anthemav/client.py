@@ -160,18 +160,15 @@ class AnthemClient:
                 
                 buffer += data.decode('ascii', errors='ignore')
                 
-                while '\n' in buffer or '\r' in buffer:
-                    if '\r\n' in buffer:
-                        line, buffer = buffer.split('\r\n', 1)
-                    elif '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                    elif '\r' in buffer:
-                        line, buffer = buffer.split('\r', 1)
-                    else:
-                        break
-                    
+                lines = buffer.splitlines(keepends=True)
+                
+                if lines and not lines[-1].endswith(('\r', '\n')):
+                    buffer = lines.pop()
+                else:
+                    buffer = ""
+                
+                for line in lines:
                     line = line.strip()
-                    
                     if line:
                         await self._process_response(line)
                 
