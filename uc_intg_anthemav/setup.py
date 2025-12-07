@@ -5,6 +5,7 @@ Anthem A/V setup flow implementation.
 :license: MPL-2.0, see LICENSE for more details.
 """
 
+import asyncio
 import logging
 from typing import Any, Dict
 
@@ -74,10 +75,29 @@ class AnthemSetup:
                     _LOG.error(f"Connection test failed for host: {host}")
                     return SetupError(IntegrationSetupError.CONNECTION_REFUSED)
                 
+                _LOG.info("Connection successful, verifying device responds to commands...")
                 await test_client.query_model()
+                await asyncio.sleep(0.2)
                 await test_client.query_power(1)
+                await asyncio.sleep(0.5)
+                
+                _LOG.info("Waiting for device responses...")
+                response_timeout = 3.0
+                start_time = asyncio.get_event_loop().time()
+                received_response = False
+                
+                while (asyncio.get_event_loop().time() - start_time) < response_timeout:
+                    if test_client.get_cached_state("model"):
+                        received_response = True
+                        _LOG.info(f"Received response from device: {test_client.get_cached_state('model')}")
+                        break
+                    await asyncio.sleep(0.1)
+                
+                if not received_response:
+                    _LOG.warning("No response received from device during connection test (may still work)")
                 
             finally:
+                _LOG.info("Closing test connection...")
                 await test_client.close()
             
             self._config.add_device(device_config)
@@ -227,6 +247,9 @@ class AnthemSetup:
             
             try:
                 success = await client.connect()
+                if success:
+                    _LOG.info(f"Testing device {device['index'] + 1} responses...")
+                    await asyncio.sleep(1.0)
                 results.append(success)
             except Exception as e:
                 _LOG.error(f"Device {device['index'] + 1} test exception: {e}")
