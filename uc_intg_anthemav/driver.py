@@ -5,6 +5,7 @@ Anthem A/V integration driver for Unfolded Circle Remote.
 :license: MPL-2.0, see LICENSE for more details.
 """
 
+import asyncio
 import logging
 
 from ucapi import EntityTypes
@@ -19,6 +20,14 @@ _LOG = logging.getLogger(__name__)
 
 class AnthemDriver(BaseIntegrationDriver):
     """Anthem A/V integration driver."""
+    
+    def __init__(self, loop: asyncio.AbstractEventLoop):
+        """Initialize the Anthem driver."""
+        super().__init__(
+            loop=loop,
+            device_class=AnthemDevice,
+            entity_classes=[AnthemMediaPlayer]
+        )
     
     def create_entities(
         self, 

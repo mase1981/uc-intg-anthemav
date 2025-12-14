@@ -23,12 +23,16 @@ _LOG = logging.getLogger(__name__)
 def _get_version():
     """Get version from driver.json."""
     try:
-        driver_path = os.path.join(os.path.dirname(__file__), "..", "driver.json")
+        driver_path = os.path.join(os.path.dirname(__file__), "driver.json")
+        if not os.path.exists(driver_path):
+            driver_path = os.path.join(os.path.dirname(__file__), "..", "driver.json")
+        
         with open(driver_path, 'r', encoding='utf-8') as f:
             driver_data = json.load(f)
-            return driver_data.get('version', '0.3.0')
-    except Exception:
-        return "0.3.0"
+            return driver_data.get('version', '0.3.2')
+    except Exception as e:
+        _LOG.warning(f"Could not read version from driver.json: {e}")
+        return "0.3.2"
 
 
 __version__ = _get_version()
@@ -43,21 +47,16 @@ async def main():
     
     _LOG.info("Starting Anthem A/V Integration v%s", __version__)
     
+    loop = asyncio.get_running_loop()
     config_dir = os.getenv("UC_CONFIG_HOME", "./config")
-    driver_path = os.path.join(os.path.dirname(__file__), "..", "driver.json")
     
     config_manager = BaseConfigManager[AnthemDeviceConfig](
         data_path=config_dir
     )
     
-    setup_flow = AnthemSetupFlow(config_manager)
+    driver = AnthemDriver(loop)
     
-    driver = AnthemDriver(
-        config_manager=config_manager,
-        device_class=AnthemDevice,
-        setup_flow=setup_flow,
-        driver_path=os.path.abspath(driver_path)
-    )
+    driver.register_setup_handler(AnthemSetupFlow, config_manager)
     
     await driver.run()
 
