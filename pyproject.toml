@@ -17,8 +17,7 @@ keywords = [
     "anthem",
     "avr",
     "receiver",
-    "media-player",
-    "ucapi-framework"
+    "media-player"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -32,8 +31,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "ucapi>=0.4.0",
-    "ucapi-framework>=1.2.2"
+    "ucapi-framework>=1.4.0"
 ]
 dynamic = ["version"]
 
@@ -57,4 +55,4 @@ version = {attr = "uc_intg_anthemav.__version__"}
 "uc_intg_anthemav" = ["*.json"]
 
 [project.scripts]
-uc-intg-anthemav = "uc_intg_anthemav:run"
+uc-intg-anthemav = "uc_intg_anthemav.driver:main"

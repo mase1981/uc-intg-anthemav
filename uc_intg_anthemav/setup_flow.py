@@ -7,91 +7,120 @@ Anthem A/V setup flow implementation.
 
 import asyncio
 import logging
+from typing import Any
+
+from ucapi import IntegrationSetupError, RequestUserInput, SetupError
 
 from ucapi_framework import BaseSetupFlow
-from ucapi.api_definitions import (
-    IntegrationSetupError,
-    SetupError,
-)
 
-from uc_intg_anthemav.config import AnthemDeviceConfig, ZoneConfig
-from uc_intg_anthemav.device import AnthemDevice
+from .config import AnthemDeviceConfig, ZoneConfig
+from .device import AnthemDevice
 
 _LOG = logging.getLogger(__name__)
 
 
-class AnthemSetupFlow(BaseSetupFlow):
-    """Setup flow for Anthem A/V receivers."""
+class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
+    """
+    Setup flow for Anthem A/V receivers.
     
-    def get_manual_entry_form(self) -> dict:
-        """Return manual entry configuration form."""
-        return {
-            "title": {"en": "Anthem A/V Receiver Setup"},
-            "settings": [
+    Matches PSN integration pattern that successfully uses ucapi-framework.
+    """
+    
+    def get_manual_entry_form(self) -> RequestUserInput:
+        """
+        Get manual entry form for Anthem receiver configuration.
+        
+        Returns RequestUserInput directly (not list[dict]).
+        This matches PSN's working implementation.
+        """
+        return RequestUserInput(
+            {"en": "Anthem A/V Receiver Setup"},
+            [
                 {
-                    "id": "host",
-                    "label": {"en": "IP Address"},
-                    "description": {"en": "IP address of your Anthem receiver"},
-                    "field": {"text": {"value": "192.168.1.100"}}
-                },
-                {
-                    "id": "port",
-                    "label": {"en": "Port"},
-                    "description": {"en": "TCP port number (default: 14999)"},
-                    "field": {"text": {"value": "14999"}}
+                    "id": "info",
+                    "label": {"en": "Setup Information"},
+                    "field": {
+                        "label": {
+                            "value": {
+                                "en": (
+                                    "Configure your Anthem A/V receiver. "
+                                    "The receiver must be powered on and connected to your network. "
+                                    "\n\nPlease enter the IP address and configuration details below."
+                                )
+                            }
+                        }
+                    },
                 },
                 {
                     "id": "name",
                     "label": {"en": "Device Name"},
-                    "description": {"en": "Friendly name for your receiver"},
-                    "field": {"text": {"value": "Anthem"}}
+                    "field": {"text": {"value": "Anthem"}},
+                },
+                {
+                    "id": "host",
+                    "label": {"en": "IP Address"},
+                    "field": {"text": {"value": "127.0.0.1"}},
+                },
+                {
+                    "id": "port",
+                    "label": {"en": "Port"},
+                    "field": {"text": {"value": "14999"}},
                 },
                 {
                     "id": "model",
                     "label": {"en": "Model Series"},
-                    "description": {"en": "Select your Anthem model series"},
                     "field": {
                         "dropdown": {
                             "items": [
-                                {"id": "MRX", "label": {"en": "MRX Series (520, 720, 1120, 1140)"}},
-                                {"id": "AVM", "label": {"en": "AVM Series (60, 70, 90)"}},
-                                {"id": "STR", "label": {"en": "STR Series"}}
+                                {"id": "MRX", "label": {"en": "MRX Series (MRX 520, 720, 1120, 1140)"}},
+                                {"id": "AVM", "label": {"en": "AVM Series (AVM 60, 70, 90)"}},
+                                {"id": "STR", "label": {"en": "STR Series"}},
                             ]
                         }
-                    }
+                    },
                 },
                 {
                     "id": "zones",
                     "label": {"en": "Number of Zones"},
-                    "description": {"en": "How many zones does your receiver have?"},
                     "field": {
                         "dropdown": {
                             "items": [
                                 {"id": "1", "label": {"en": "1 Zone"}},
                                 {"id": "2", "label": {"en": "2 Zones"}},
-                                {"id": "3", "label": {"en": "3 Zones"}}
+                                {"id": "3", "label": {"en": "3 Zones"}},
                             ]
                         }
-                    }
-                }
-            ]
-        }
+                    },
+                },
+            ],
+        )
     
-    async def query_device(self, input_values: dict) -> AnthemDeviceConfig:
-        """Query device and return configuration."""
+    async def query_device(
+        self, input_values: dict[str, Any]
+    ) -> RequestUserInput | AnthemDeviceConfig:
+        """
+        Process manual entry form, validate connection, and create config.
+        
+        This matches PSN's query_device pattern.
+        Performs validation and returns config if successful, or raises ValueError.
+        """
         host = input_values.get("host", "").strip()
         if not host:
-            raise SetupError(IntegrationSetupError.OTHER, "IP address is required")
+            _LOG.error("No host provided")
+            raise ValueError("IP address is required")
         
-        port = int(input_values.get("port", 14999))
         name = input_values.get("name", f"Anthem ({host})").strip()
+        port = int(input_values.get("port", 14999))
         model = input_values.get("model", "MRX").strip()
         zones_count = int(input_values.get("zones", "1"))
         
+        # Create identifier from IP address
         identifier = f"anthem_{host.replace('.', '_')}_{port}"
         
+        # Create zone configurations
         zones = [ZoneConfig(zone_number=i) for i in range(1, zones_count + 1)]
         
+        # Create device config
         device_config = AnthemDeviceConfig(
             identifier=identifier,
             name=name,
@@ -101,44 +130,27 @@ class AnthemSetupFlow(BaseSetupFlow):
             zones=zones
         )
         
-        _LOG.info(f"Testing connection to Anthem at {host}:{port}")
-        
-        test_device = AnthemDevice(device_config)
+        # Test connection (like PSN does authentication)
+        _LOG.info("Testing connection to %s:%d", host, port)
         
         try:
-            connection_successful = await test_device.connect()
+            test_device = AnthemDevice(device_config)
+            connected = await asyncio.wait_for(test_device.connect(), timeout=10.0)
             
-            if not connection_successful:
-                _LOG.error(f"Connection test failed for host: {host}")
-                raise SetupError(IntegrationSetupError.CONNECTION_REFUSED)
+            if not connected:
+                _LOG.error("Connection test failed for %s", host)
+                await test_device.disconnect()
+                raise ValueError(f"Failed to connect to {host}:{port}")
             
-            _LOG.info("Connection successful, verifying device responds...")
-            await test_device.query_model()
-            await asyncio.sleep(0.2)
-            await test_device.query_power(1)
-            await asyncio.sleep(0.5)
-            
-            response_timeout = 3.0
-            start_time = asyncio.get_event_loop().time()
-            received_response = False
-            
-            while (asyncio.get_event_loop().time() - start_time) < response_timeout:
-                if test_device.get_cached_state("model"):
-                    received_response = True
-                    _LOG.info(f"Received response from device: {test_device.get_cached_state('model')}")
-                    break
-                await asyncio.sleep(0.1)
-            
-            if not received_response:
-                _LOG.warning("No response received during connection test (may still work)")
-            
-            _LOG.info(f"Successfully validated Anthem receiver at {host}:{port}")
-            return device_config
-            
-        except SetupError:
-            raise
-        except Exception as e:
-            _LOG.error(f"Connection test error: {e}", exc_info=True)
-            raise SetupError(IntegrationSetupError.OTHER)
-        finally:
+            _LOG.info("Connection successful to %s", host)
             await test_device.disconnect()
+            
+            # Return validated configuration
+            return device_config
+        
+        except asyncio.TimeoutError:
+            _LOG.error("Connection timeout to %s:%d", host, port)
+            raise ValueError(f"Connection timeout to {host}:{port}") from None
+        except Exception as err:
+            _LOG.error("Connection error: %s", err, exc_info=True)
+            raise ValueError(f"Failed to connect to {host}:{port}: {err}") from err

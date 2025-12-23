@@ -1,6 +1,6 @@
 {
   "driver_id": "anthemav",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "min_core_api": "0.22.0",
   "name": {
     "en": "Anthem A/V Receivers"
@@ -19,153 +19,19 @@
   "release_date": "2025-01-01",
   "setup_data_schema": {
     "title": {
-      "en": "Anthem A/V Receivers Setup"
+      "en": "Integration setup"
     },
     "settings": [
       {
-        "id": "device_count",
+        "id": "info",
         "label": {
-          "en": "Number of Devices"
-        },
-        "description": {
-          "en": "How many Anthem devices do you want to configure?"
+          "en": "Setup process"
         },
         "field": {
-          "dropdown": {
-            "items": [
-              {
-                "id": "1",
-                "label": {
-                  "en": "Single Device"
-                }
-              },
-              {
-                "id": "2",
-                "label": {
-                  "en": "2 Devices"
-                }
-              },
-              {
-                "id": "3",
-                "label": {
-                  "en": "3 Devices"
-                }
-              },
-              {
-                "id": "4",
-                "label": {
-                  "en": "4 Devices"
-                }
-              }
-            ]
-          }
-        }
-      },
-      {
-        "id": "host",
-        "label": {
-          "en": "IP Address"
-        },
-        "description": {
-          "en": "IP address of your Anthem receiver (for single device setup)"
-        },
-        "field": {
-          "text": {
-            "value": "192.168.1.100"
-          }
-        }
-      },
-      {
-        "id": "port",
-        "label": {
-          "en": "Port"
-        },
-        "description": {
-          "en": "TCP port number (default: 14999)"
-        },
-        "field": {
-          "text": {
-            "value": "14999"
-          }
-        }
-      },
-      {
-        "id": "name",
-        "label": {
-          "en": "Device Name"
-        },
-        "description": {
-          "en": "Friendly name for your Anthem receiver"
-        },
-        "field": {
-          "text": {
-            "value": "Anthem"
-          }
-        }
-      },
-      {
-        "id": "model",
-        "label": {
-          "en": "Model Series"
-        },
-        "description": {
-          "en": "Select your Anthem model series"
-        },
-        "field": {
-          "dropdown": {
-            "items": [
-              {
-                "id": "MRX",
-                "label": {
-                  "en": "MRX Series (MRX 520, 720, 1120, 1140)"
-                }
-              },
-              {
-                "id": "AVM",
-                "label": {
-                  "en": "AVM Series (AVM 60, 70, 90)"
-                }
-              },
-              {
-                "id": "STR",
-                "label": {
-                  "en": "STR Series"
-                }
-              }
-            ]
-          }
-        }
-      },
-      {
-        "id": "zones",
-        "label": {
-          "en": "Number of Zones"
-        },
-        "description": {
-          "en": "How many zones does your receiver have?"
-        },
-        "field": {
-          "dropdown": {
-            "items": [
-              {
-                "id": "1",
-                "label": {
-                  "en": "1 Zone"
-                }
-              },
-              {
-                "id": "2",
-                "label": {
-                  "en": "2 Zones"
-                }
-              },
-              {
-                "id": "3",
-                "label": {
-                  "en": "3 Zones"
-                }
-              }
-            ]
+          "label": {
+            "value": {
+              "en": "This integration communicates with Anthem A/V receivers via TCP to provide complete control of your home theater system."
+            }
           }
         }
       }

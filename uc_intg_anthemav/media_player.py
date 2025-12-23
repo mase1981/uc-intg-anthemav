@@ -5,6 +5,7 @@ Anthem Media Player entity implementation.
 :license: MPL-2.0, see LICENSE for more details.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -12,8 +13,8 @@ from ucapi import StatusCodes
 from ucapi.media_player import Attributes, Commands, DeviceClasses, Features, MediaPlayer, States, Options
 from ucapi_framework import DeviceEvents
 
-from uc_intg_anthemav.config import AnthemDeviceConfig, ZoneConfig
-from uc_intg_anthemav.device import AnthemDevice
+from .config import AnthemDeviceConfig, ZoneConfig
+from .device import AnthemDevice
 
 _LOG = logging.getLogger(__name__)
 
@@ -21,22 +22,27 @@ _LOG = logging.getLogger(__name__)
 class AnthemMediaPlayer(MediaPlayer):
     """Media player entity for Anthem A/V receiver zone."""
     
-    def __init__(
-        self,
-        entity_id: str,
-        device: AnthemDevice,
-        device_config: AnthemDeviceConfig,
-        zone_config: ZoneConfig
-    ):
+    def __init__(self, device_config: AnthemDeviceConfig, device: AnthemDevice, zone_config: ZoneConfig):
+        """
+        Initialize media player entity.
+        
+        :param device_config: Device configuration
+        :param device: Anthem device instance
+        :param zone_config: Zone configuration
+        """
         self._device = device
         self._device_config = device_config
         self._zone_config = zone_config
         
+        # Create entity ID
         if zone_config.zone_number == 1:
+            entity_id = f"media_player.{device_config.identifier}"
             entity_name = device_config.name
         else:
+            entity_id = f"media_player.{device_config.identifier}.zone{zone_config.zone_number}"
             entity_name = f"{device_config.name} {zone_config.name}"
         
+        # Define features
         features = [
             Features.ON_OFF,
             Features.VOLUME,
@@ -47,22 +53,16 @@ class AnthemMediaPlayer(MediaPlayer):
             Features.SELECT_SOURCE
         ]
         
-        source_list = [
-            "HDMI 1", "HDMI 2", "HDMI 3", "HDMI 4",
-            "HDMI 5", "HDMI 6", "HDMI 7", "HDMI 8",
-            "Analog 1", "Analog 2",
-            "Digital 1", "Digital 2",
-            "USB", "Network", "ARC"
-        ]
-        
+        # Initial attributes - will be updated after connection
         attributes = {
             Attributes.STATE: States.UNAVAILABLE,
             Attributes.VOLUME: 0,
             Attributes.MUTED: False,
             Attributes.SOURCE: "",
-            Attributes.SOURCE_LIST: source_list
+            Attributes.SOURCE_LIST: []  # Empty initially, populated after input discovery
         }
         
+        # Simple commands
         options = {
             Options.SIMPLE_COMMANDS: [
                 Commands.ON,
@@ -79,92 +79,78 @@ class AnthemMediaPlayer(MediaPlayer):
             features,
             attributes,
             device_class=DeviceClasses.RECEIVER,
-            area=device_config.name if zone_config.zone_number > 1 else None,
             cmd_handler=self.handle_command,
             options=options
         )
         
-        self._device.events.on(DeviceEvents.UPDATE, self._on_device_update)
-        self._device.events.on(DeviceEvents.CONNECTED, self._on_device_connected)
-        self._device.events.on(DeviceEvents.DISCONNECTED, self._on_device_disconnected)
+        # Register for device events
+        device.events.on(DeviceEvents.UPDATE, self._on_device_update)
+        
+        _LOG.info("[%s] Entity initialized for Zone %d", self.id, zone_config.zone_number)
     
-    def _on_device_update(self, device_id: str, update_data: dict[str, Any]) -> None:
-        """Handle device state updates."""
-        if device_id != self._device_config.identifier:
+    async def _on_device_update(self, entity_id: str, update_data: dict[str, Any]) -> None:
+        """
+        Handle device state updates.
+        
+        Called when device emits UPDATE events with new state data.
+        Framework automatically propagates attribute changes.
+        """
+        if entity_id != self.id:
             return
         
-        if "zone" in update_data:
-            if update_data["zone"] == self._zone_config.zone_number:
-                zone_state = update_data.get("state", {})
-                self._update_attributes_from_state(zone_state)
+        _LOG.debug("[%s] Device update: %s", self.id, update_data)
         
-        if update_data.get("inputs_discovered"):
-            source_list = self._device.get_input_list()
-            if self.attributes.get(Attributes.SOURCE_LIST) != source_list:
-                self.attributes[Attributes.SOURCE_LIST] = source_list
+        # Update entity attributes - framework handles propagation
+        for key, value in update_data.items():
+            if key == "state":
+                # Convert string state to States enum
+                if value == "ON":
+                    self.attributes[Attributes.STATE] = States.ON
+                elif value == "OFF":
+                    self.attributes[Attributes.STATE] = States.OFF
+                else:
+                    self.attributes[Attributes.STATE] = States.UNAVAILABLE
+                _LOG.debug("[%s] State updated: %s", self.id, self.attributes[Attributes.STATE])
+                
+            elif key == "volume":
+                self.attributes[Attributes.VOLUME] = value
+                _LOG.debug("[%s] Volume updated: %d%%", self.id, value)
+                
+            elif key == "muted":
+                self.attributes[Attributes.MUTED] = value
+                _LOG.debug("[%s] Mute updated: %s", self.id, value)
+                
+            elif key == "source":
+                self.attributes[Attributes.SOURCE] = value
+                _LOG.debug("[%s] Source updated: %s", self.id, value)
+                
+            elif key == "source_list":
+                # Update source list when device discovers inputs
+                self.attributes[Attributes.SOURCE_LIST] = value
+                _LOG.info("[%s] Source list updated: %d sources available", self.id, len(value))
     
-    def _on_device_connected(self, device_id: str) -> None:
-        """Handle device connection."""
-        if device_id != self._device_config.identifier:
-            return
+    async def push_update(self) -> None:
+        """
+        Query device for current status and update entity.
         
-        _LOG.info(f"Device {self._device_config.name} connected, querying zone {self._zone_config.zone_number} status")
+        Called when entity is first subscribed to get initial state.
+        """
+        _LOG.info("[%s] Querying initial status for Zone %d", self.id, self._zone_config.zone_number)
+        
+        # Query all status for this zone
+        await self._device.query_status(self._zone_config.zone_number)
+        
+        # Wait for responses to be processed
+        await asyncio.sleep(0.3)
     
-    def _on_device_disconnected(self, device_id: str) -> None:
-        """Handle device disconnection."""
-        if device_id != self._device_config.identifier:
-            return
-        
-        self.attributes[Attributes.STATE] = States.UNAVAILABLE
-        _LOG.warning(f"Device {self._device_config.name} disconnected, zone {self._zone_config.zone_number} unavailable")
-    
-    def _update_attributes_from_state(self, zone_state: dict[str, Any]) -> None:
-        """Update entity attributes from zone state."""
-        updated_attrs = {}
-        
-        if "power" in zone_state:
-            new_state = States.ON if zone_state["power"] else States.OFF
-            if self.attributes.get(Attributes.STATE) != new_state:
-                updated_attrs[Attributes.STATE] = new_state
-        
-        if "volume" in zone_state:
-            volume_db = zone_state["volume"]
-            volume_pct = self._db_to_percentage(volume_db)
-            if abs(self.attributes.get(Attributes.VOLUME, 0) - volume_pct) > 0.01:
-                updated_attrs[Attributes.VOLUME] = volume_pct
-        
-        if "muted" in zone_state:
-            if self.attributes.get(Attributes.MUTED) != zone_state["muted"]:
-                updated_attrs[Attributes.MUTED] = zone_state["muted"]
-        
-        if "input_name" in zone_state:
-            if self.attributes.get(Attributes.SOURCE) != zone_state["input_name"]:
-                updated_attrs[Attributes.SOURCE] = zone_state["input_name"]
-                if zone_state["input_name"]:
-                    updated_attrs[Attributes.MEDIA_TITLE] = zone_state["input_name"]
-        
-        if "audio_format" in zone_state:
-            if zone_state["audio_format"]:
-                updated_attrs[Attributes.MEDIA_TYPE] = zone_state["audio_format"]
-        
-        if updated_attrs:
-            self.attributes.update(updated_attrs)
-    
-    def _db_to_percentage(self, db_value: int) -> float:
-        """Convert dB value to percentage (0-100)."""
-        db_range = 90
-        percentage = ((db_value + 90) / db_range) * 100
-        return max(0.0, min(100.0, percentage))
-    
-    def _percentage_to_db(self, percentage: float) -> int:
-        """Convert percentage to dB value (-90 to 0)."""
-        db_range = 90
-        db_value = int((percentage * db_range / 100) - 90)
-        return max(-90, min(0, db_value))
-    
-    async def handle_command(self, entity: MediaPlayer, cmd_id: str, params: dict[str, Any] | None) -> StatusCodes:
-        """Handle entity commands."""
-        _LOG.info(f"Command {cmd_id} for {self.id}")
+    async def handle_command(
+        self,
+        entity: MediaPlayer,
+        cmd_id: str,
+        params: dict[str, Any] | None
+    ) -> StatusCodes:
+        """Handle media player commands."""
+        _LOG.info("[%s] Command: %s %s", self.id, cmd_id, params or "")
         
         try:
             zone = self._zone_config.zone_number
@@ -180,7 +166,8 @@ class AnthemMediaPlayer(MediaPlayer):
             elif cmd_id == Commands.VOLUME:
                 if params and "volume" in params:
                     volume_pct = float(params["volume"])
-                    volume_db = self._percentage_to_db(volume_pct)
+                    # Convert percentage to dB (-90 to 0)
+                    volume_db = int((volume_pct * 90 / 100) - 90)
                     success = await self._device.set_volume(volume_db, zone)
                     return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                 return StatusCodes.BAD_REQUEST
@@ -217,16 +204,12 @@ class AnthemMediaPlayer(MediaPlayer):
                 return StatusCodes.BAD_REQUEST
             
             else:
-                _LOG.debug(f"Suppressing unsupported command: {cmd_id}")
-                return StatusCodes.OK
+                _LOG.debug("[%s] Unsupported command: %s", self.id, cmd_id)
+                return StatusCodes.OK  # Return OK for unsupported commands
         
-        except Exception as e:
-            _LOG.error(f"Error executing command {cmd_id}: {e}")
+        except Exception as err:
+            _LOG.error("[%s] Error executing command %s: %s", self.id, cmd_id, err)
             return StatusCodes.SERVER_ERROR
-    
-    async def push_update(self) -> None:
-        """Query device for current state."""
-        await self._device.query_all_status(self._zone_config.zone_number)
     
     @property
     def zone_number(self) -> int:

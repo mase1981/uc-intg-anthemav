@@ -1,2 +1,2 @@
-ucapi>=0.4.0
-ucapi-framework>=1.2.2
+ucapi==0.4.0
+ucapi-framework>=1.4.0

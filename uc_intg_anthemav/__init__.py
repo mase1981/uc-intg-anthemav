@@ -6,98 +6,94 @@ Anthem A/V Receivers Integration for Unfolded Circle Remote Two/3.
 """
 
 import asyncio
-import json
 import logging
 import os
-import sys
 
-from ucapi_framework import BaseConfigManager
+from ucapi import DeviceStates, Events
+from ucapi_framework import get_config_path
 
-from uc_intg_anthemav.config import AnthemDeviceConfig
-from uc_intg_anthemav.device import AnthemDevice
-from uc_intg_anthemav.driver import AnthemDriver
-from uc_intg_anthemav.setup_flow import AnthemSetupFlow
+from .config import AnthemConfigManager
+from .driver import AnthemDriver
+from .setup_flow import AnthemSetupFlow
+
+__version__ = "0.5.0"
 
 _LOG = logging.getLogger(__name__)
 
 
-def _get_version():
-    """Get version from driver.json - handles PyInstaller packaging."""
-    fallback_version = "0.3.2"
-    
-    try:
-        search_paths = []
-        
-        # 1. PyInstaller bundle: sys._MEIPASS points to extracted temp folder
-        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-            search_paths.append(os.path.join(sys._MEIPASS, 'driver.json'))
-            search_paths.append(os.path.join(sys._MEIPASS, 'uc_intg_anthemav', 'driver.json'))
-        
-        # 2. Package directory (installed or development)
-        package_dir = os.path.dirname(__file__)
-        search_paths.append(os.path.join(package_dir, 'driver.json'))
-        search_paths.append(os.path.join(package_dir, '..', 'driver.json'))
-        
-        # 3. Current working directory
-        search_paths.append('driver.json')
-        search_paths.append(os.path.join('..', 'driver.json'))
-        
-        for driver_path in search_paths:
-            try:
-                driver_path = os.path.abspath(driver_path)
-                if os.path.exists(driver_path):
-                    with open(driver_path, 'r', encoding='utf-8') as f:
-                        driver_data = json.load(f)
-                        version = driver_data.get('version', fallback_version)
-                        _LOG.debug(f"Read version {version} from {driver_path}")
-                        return version
-            except Exception:
-                continue
-        
-        _LOG.warning(f"Could not find driver.json, using fallback: {fallback_version}")
-        return fallback_version
-        
-    except Exception as e:
-        _LOG.warning(f"Error reading version: {e}, using fallback: {fallback_version}")
-        return fallback_version
-
-
-__version__ = _get_version()
-
-
 async def main():
-    """Main entry point for Anthem integration."""
+    """Main entry point for the Anthem A/V integration."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
+    # Suppress websocket handshake errors (normal noise from port probing)
+    logging.getLogger('websockets.server').setLevel(logging.CRITICAL)
+    
     _LOG.info("Starting Anthem A/V Integration v%s", __version__)
     
-    loop = asyncio.get_running_loop()
-    config_dir = os.getenv("UC_CONFIG_HOME", "./config")
-    
-    config_manager = BaseConfigManager[AnthemDeviceConfig](
-        data_path=config_dir
-    )
-    
-    driver = AnthemDriver(loop)
-    
-    driver.register_setup_handler(AnthemSetupFlow, config_manager)
-    
-    await driver.run()
-
-
-def run():
-    """Run the integration."""
     try:
-        asyncio.run(main())
+        loop = asyncio.get_running_loop()
+        
+        # Create driver
+        driver = AnthemDriver(loop)
+        
+        # Setup configuration manager
+        # Note: config_dir_path may not be fully set until after init(),
+        # but get_config_path() handles this with environment detection
+        config_path = get_config_path(driver.api.config_dir_path or "")
+        config_manager = AnthemConfigManager(
+            config_path,
+            add_handler=driver.on_device_added,
+            remove_handler=driver.on_device_removed,
+            config_class=None  # Auto-detected from Generic type
+        )
+        driver.config_manager = config_manager
+        
+        # Register subscription event handler
+        driver.api.add_listener(Events.SUBSCRIBE_ENTITIES, driver.on_subscribe_entities)
+        _LOG.info("Registered subscription event handler")
+        
+        # Create setup handler using framework (will use form from driver.json)
+        setup_handler = AnthemSetupFlow.create_handler(driver)
+        
+        # Initialize API with driver.json and setup handler
+        driver_path = os.path.join(os.path.dirname(__file__), "..", "driver.json")
+        await driver.api.init(os.path.abspath(driver_path), setup_handler)
+        
+        # Register all configured devices
+        await driver.register_all_configured_devices(connect=False)
+        
+        # Set initial state
+        device_count = len(list(config_manager.all()))
+        if device_count > 0:
+            _LOG.info("Configured with %d device(s)", device_count)
+            await driver.api.set_device_state(DeviceStates.CONNECTED)
+        else:
+            _LOG.info("No devices configured, waiting for setup")
+            await driver.api.set_device_state(DeviceStates.DISCONNECTED)
+        
+        _LOG.info("=" * 70)
+        _LOG.info("✅ Anthem integration started successfully")
+        _LOG.info("=" * 70)
+        _LOG.info("Integration is running and listening on port 9090")
+        _LOG.info("Ready to connect simulator or configure devices")
+        _LOG.info("Press Ctrl+C to stop")
+        _LOG.info("=" * 70)
+        
+        # Keep running indefinitely
+        while True:
+            await asyncio.sleep(3600)  # Sleep for 1 hour, loop forever
+        
     except KeyboardInterrupt:
         _LOG.info("Integration stopped by user")
-    except Exception as e:
-        _LOG.error(f"Integration failed: {e}", exc_info=True)
+    except asyncio.CancelledError:
+        _LOG.info("Integration task cancelled")
+    except Exception as err:
+        _LOG.critical("Fatal error: %s", err, exc_info=True)
         raise
 
 
 if __name__ == "__main__":
-    run()
+    asyncio.run(main())

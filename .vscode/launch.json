@@ -2,16 +2,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: anthemav Integration",
+            "name": "Python: Anthem Integration (Framework)",
             "type": "debugpy",
             "request": "launch",
-            "module": "uc_intg_anthemav.driver",
+            "module": "uc_intg_anthemav",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": false,
             "env": {
-                "PYTHONPATH": "${workspaceFolder}"
+                "PYTHONPATH": "${workspaceFolder}",
+                "UC_CONFIG_HOME": "${workspaceFolder}/config"
             }
+        },
+        {
+            "name": "Python: Anthem Simulator",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/anthem_simulator.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }
