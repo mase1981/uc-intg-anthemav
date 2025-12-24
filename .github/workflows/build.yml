@@ -1,62 +1,150 @@
-name: Build Integration
+name: "Build & Draft Release"
 
-on:
+"on":
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - "v*"
+
+env:
+  INTG_NAME: anthemav
+  PYTHON_VER: 3.11.12-0.3.0
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
+    name: Build Release
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.get-version-and-id.outputs.VERSION }}
+      driver_id: ${{ steps.get-version-and-id.outputs.DRIVER_ID }}
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
+          fetch-depth: 200
+
+      - name: Get version and id
+        id: get-version-and-id
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      
-      - name: Build with PyInstaller
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "DRIVER_ID=$(jq .driver_id -r driver.json)" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "DRIVER_ID=$(jq .driver_id -r driver.json)" >> $GITHUB_OUTPUT
+
+      - name: Build
         run: |
-          pyinstaller --onefile \
-            --name uc-intg-anthemav \
-            --add-data "driver.json:." \
-            --hidden-import uc_intg_anthemav \
-            --hidden-import uc_intg_anthemav.device \
-            --hidden-import uc_intg_anthemav.driver \
-            --hidden-import uc_intg_anthemav.media_player \
-            --hidden-import uc_intg_anthemav.remote \
-            --hidden-import uc_intg_anthemav.setup_flow \
-            --hidden-import uc_intg_anthemav.config \
-            -m uc_intg_anthemav
-      
-      - name: Create artifact directory
-        run: mkdir -p artifacts
-      
-      - name: Package integration
+          sudo apt-get update && sudo apt-get install -y qemu-system-arm binfmt-support qemu-user-static
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          echo "Starting pyinstaller build for driver_id: ${DRIVER_ID}"
+          docker run --rm --name builder \
+            --platform=linux/arm64 \
+            --user=$(id -u):$(id -g) \
+            -v ${GITHUB_WORKSPACE}:/workspace \
+            docker.io/unfoldedcircle/r2-pyinstaller:${PYTHON_VER} \
+            bash -c \
+            "cd /workspace && \
+              python -m pip install -r requirements.txt && \
+              pyinstaller --clean --onedir --name driver \
+                --add-data driver.json:. \
+                --collect-all zeroconf \
+                --collect-all ucapi \
+                --collect-all ucapi_framework \
+                --paths . \
+                uc_intg_${INTG_NAME}/__init__.py"
+
+      - name: Prepare artifacts
+        shell: bash
         run: |
-          cd dist
-          tar -czf ../artifacts/uc-intg-anthemav.tar.gz uc-intg-anthemav
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          mkdir -p artifacts/bin
+          mv dist/driver/* artifacts/bin/
+          cp driver.json artifacts/
+          echo "ARTIFACT_NAME=uc-intg-${{ env.DRIVER_ID }}-${{ env.VERSION }}-aarch64" >> $GITHUB_ENV
+          echo "=== Artifact structure ==="
+          ls -laR artifacts/
+
+      - name: Create upload artifact archive
+        shell: bash
+        run: |
+          tar czvf ${{ env.ARTIFACT_NAME }}.tar.gz -C ${GITHUB_WORKSPACE}/artifacts .
+          echo "=== Archive contents ==="
+          tar tzvf ${{ env.ARTIFACT_NAME }}.tar.gz
+          ls -lah ${{ env.ARTIFACT_NAME }}.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        id: upload_artifact
         with:
-          name: uc-intg-anthemav
-          path: artifacts/uc-intg-anthemav.tar.gz
-      
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+
+  docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-24.04
+    needs: [build]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          files: artifacts/uc-intg-anthemav.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/uc-intg-anthemav
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-24.04
+    needs: [build, docker]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Extract build archives from downloaded files
+        run: |
+          ls -R
+          for D in * do if [ -d "${D}" ]; then
+              mv $D/* ./
+            fi
+          done;
+
+      - name: Create hash file
+        run: |
+          for filename in *.tar.gz; do echo "sha256  `sha256sum $filename`" >> ${{needs.build.outputs.driver_id}}.hash; done;
+
+      - name: Create release draft
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "*.tar.gz,${{needs.build.outputs.driver_id}}.hash"
+          draft: true
+          generateReleaseNotes: true
+          artifactErrorsFailBuild: true
+          tag: v${{needs.build.outputs.version}}

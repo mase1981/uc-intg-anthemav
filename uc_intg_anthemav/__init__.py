@@ -12,9 +12,9 @@ import os
 from ucapi import DeviceStates
 from ucapi_framework import get_config_path, BaseConfigManager
 
-from .driver import AnthemDriver
-from .setup_flow import AnthemSetupFlow
-from .config import AnthemDeviceConfig
+from uc_intg_anthemav.driver import AnthemDriver
+from uc_intg_anthemav.setup_flow import AnthemSetupFlow
+from uc_intg_anthemav.config import AnthemDeviceConfig
 
 __version__ = "0.5.0"
 
