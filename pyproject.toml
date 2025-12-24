@@ -55,4 +55,4 @@ version = {attr = "uc_intg_anthemav.__version__"}
 "uc_intg_anthemav" = ["*.json"]
 
 [project.scripts]
-uc-intg-anthemav = "uc_intg_anthemav.driver:main"
+uc-intg-anthemav = "uc_intg_anthemav:main"

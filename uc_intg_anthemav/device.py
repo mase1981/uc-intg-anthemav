@@ -377,10 +377,6 @@ class AnthemDevice(PersistentConnectionDevice):
             "Network",
             "ARC",
         ]
-        return [
-            self._input_names.get(i, f"Input {i}")
-            for i in range(1, self._input_count + 1)
-        ]
 
     def get_input_number_by_name(self, name: str) -> int | None:
         """Get input number by name."""
