@@ -129,16 +129,20 @@ jobs:
         uses: actions/download-artifact@v4
 
       - name: Extract build archives from downloaded files
+        # FIXED: Added missing semicolon before 'do'
         run: |
           ls -R
-          for D in * do if [ -d "${D}" ]; then
-              mv $D/* ./
+          for D in *; do
+            if [ -d "${D}" ]; then
+              mv "${D}"/* ./
             fi
-          done;
+          done
 
       - name: Create hash file
         run: |
-          for filename in *.tar.gz; do echo "sha256  `sha256sum $filename`" >> ${{needs.build.outputs.driver_id}}.hash; done;
+          for filename in *.tar.gz; do 
+            echo "sha256 $(sha256sum "$filename")" >> ${{needs.build.outputs.driver_id}}.hash
+          done
 
       - name: Create release draft
         uses: ncipollo/release-action@v1
