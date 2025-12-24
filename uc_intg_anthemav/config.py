@@ -11,12 +11,17 @@ from ucapi_framework import BaseConfigManager
 
 @dataclass
 class ZoneConfig:
+<<<<<<< HEAD
     """Configuration for a single receiver zone."""
     
+=======
+    """Configuration for a single zone."""
+
+>>>>>>> main
     zone_number: int
     enabled: bool = True
     name: str | None = None
-    
+
     def __post_init__(self):
         """Set default name if not provided."""
         if self.name is None:
@@ -25,12 +30,18 @@ class ZoneConfig:
 
 @dataclass
 class AnthemDeviceConfig:
+<<<<<<< HEAD
+=======
+    """Configuration for an Anthem A/V receiver/processor."""
+
+>>>>>>> main
     identifier: str
     name: str
     host: str
     model: str = "AVM"
     port: int = 14999
     zones: list[ZoneConfig] = field(default_factory=lambda: [ZoneConfig(1)])
+<<<<<<< HEAD
     
     # CRITICAL: Store discovered inputs from setup flow
     # This is populated during query_device() BEFORE entities are created
@@ -41,3 +52,12 @@ class AnthemDeviceConfig:
 class AnthemConfigManager(BaseConfigManager[AnthemDeviceConfig]):
     """Configuration manager for Anthem devices with JSON persistence."""
     pass
+=======
+
+    def __post_init__(self):
+        """Ensure zones is a list of ZoneConfig objects."""
+        if self.zones and isinstance(self.zones[0], dict):
+            self.zones = [
+                ZoneConfig(**z) if isinstance(z, dict) else z for z in self.zones
+            ]
+>>>>>>> main
