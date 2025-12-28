@@ -1,5 +1,5 @@
 """
-Anthem A/V Receiver device implementation using PersistentConnectionDevice.
+Anthem A/V Receiver device implementation.
 
 :copyright: (c) 2025 by Meir Miyara.
 :license: MPL-2.0, see LICENSE for more details.
@@ -27,6 +27,8 @@ class AnthemDevice(PersistentConnectionDevice):
         self._zone_states: dict[int, dict[str, Any]] = {}
         self._input_names: dict[int, str] = {}
         self._input_count: int = 0
+        
+        _LOG.error("[%s] DIAGNOSTIC: Device instance created, ID=%s", self.log_id, id(self))
         
         for zone_config in device_config.zones:
             self._zone_states[zone_config.zone_number] = {
@@ -56,11 +58,11 @@ class AnthemDevice(PersistentConnectionDevice):
         return f"{self.name} ({self.address})"
 
     async def establish_connection(self) -> Any:
-        """
-        Establish TCP connection to Anthem receiver.
-
-        :return: Tuple of (reader, writer)
-        """
+        _LOG.error(
+            "[%s] DIAGNOSTIC: establish_connection() called, instance ID=%s",
+            self.log_id,
+            id(self)
+        )
         _LOG.info(
             "[%s] Establishing TCP connection to %s:%d",
             self.log_id,
@@ -70,6 +72,13 @@ class AnthemDevice(PersistentConnectionDevice):
 
         self._reader, self._writer = await asyncio.open_connection(
             self._device_config.host, self._device_config.port
+        )
+        
+        _LOG.error(
+            "[%s] DIAGNOSTIC: Connection objects created - reader=%s, writer=%s",
+            self.log_id,
+            self._reader is not None,
+            self._writer is not None
         )
 
         await self._send_command("ECH0")
@@ -90,22 +99,26 @@ class AnthemDevice(PersistentConnectionDevice):
         await asyncio.sleep(0.5)
 
         _LOG.info("[%s] Connection established and initialized", self.log_id)
+        _LOG.error("[%s] DIAGNOSTIC: Returning connection objects", self.log_id)
         return (self._reader, self._writer)
 
     async def close_connection(self) -> None:
-        """Close TCP connection."""
+        _LOG.error("[%s] DIAGNOSTIC: close_connection() called, writer=%s", self.log_id, self._writer is not None)
         if self._writer:
             try:
                 self._writer.close()
                 await self._writer.wait_closed()
+                _LOG.error("[%s] DIAGNOSTIC: Connection closed successfully", self.log_id)
             except Exception as err:
                 _LOG.debug("[%s] Error closing connection: %s", self.log_id, err)
 
         self._reader = None
         self._writer = None
+        _LOG.error("[%s] DIAGNOSTIC: Reader and writer set to None", self.log_id)
 
     async def maintain_connection(self) -> None:
         buffer = ""
+        _LOG.error("[%s] DIAGNOSTIC: Message loop STARTED", self.log_id)
         _LOG.debug("[%s] Message loop started", self.log_id)
 
         while self._reader and not self._reader.at_eof():
@@ -114,6 +127,7 @@ class AnthemDevice(PersistentConnectionDevice):
 
                 if not data:
                     _LOG.warning("[%s] Connection closed by device", self.log_id)
+                    _LOG.error("[%s] DIAGNOSTIC: Connection closed by device - breaking loop", self.log_id)
                     break
 
                 decoded = data.decode("ascii", errors="ignore")
@@ -126,21 +140,31 @@ class AnthemDevice(PersistentConnectionDevice):
                         await self._process_response(line)
 
             except asyncio.TimeoutError:
+                _LOG.error("[%s] DIAGNOSTIC: 120s timeout in message loop - continuing", self.log_id)
                 continue
             except Exception as err:
+                _LOG.error("[%s] DIAGNOSTIC: Error in message loop: %s - BREAKING", self.log_id, err)
                 _LOG.error("[%s] Error in message loop: %s", self.log_id, err)
                 break
 
+        _LOG.error("[%s] DIAGNOSTIC: Message loop ENDED", self.log_id)
         _LOG.debug("[%s] Message loop ended", self.log_id)
 
     async def _send_command(self, command: str) -> bool:
-        """
-        Send command to receiver.
-
-        Commands are terminated with carriage return (\r), but responses
-        come back terminated with semicolon (;).
-        """
+        _LOG.error(
+            "[%s] DIAGNOSTIC: _send_command() called with '%s', instance ID=%s",
+            self.log_id,
+            command,
+            id(self)
+        )
+        _LOG.error(
+            "[%s] DIAGNOSTIC: self._writer is None? %s",
+            self.log_id,
+            self._writer is None
+        )
+        
         if not self._writer:
+            _LOG.error("[%s] CRITICAL ERROR: Cannot send command '%s' - writer is None!", self.log_id, command)
             _LOG.warning("[%s] Cannot send command - not connected", self.log_id)
             return False
 
@@ -148,14 +172,14 @@ class AnthemDevice(PersistentConnectionDevice):
             cmd_bytes = f"{command}\r".encode("ascii")
             self._writer.write(cmd_bytes)
             await self._writer.drain()
+            _LOG.error("[%s] DIAGNOSTIC: Command '%s' sent successfully to TCP socket", self.log_id, command)
             _LOG.debug("[%s] Sent command: %s", self.log_id, command)
             return True
         except Exception as err:
-            _LOG.error("[%s] Error sending command %s: %s", self.log_id, command, err)
+            _LOG.error("[%s] ERROR sending command %s: %s", self.log_id, command, err)
             return False
 
     async def _process_response(self, response: str) -> None:
-        """Process a response from the receiver."""
         _LOG.debug("[%s] RECEIVED: %s", self.log_id, response)
 
         if response.startswith("!I") or response.startswith("!E"):
@@ -165,9 +189,9 @@ class AnthemDevice(PersistentConnectionDevice):
         self._update_state_from_response(response)
 
     def _update_state_from_response(self, response: str) -> None:
-        """Update device state from response."""
         if response.startswith("IDM"):
             model = response[3:].strip()
+            self._state = {"model": model}
             _LOG.info("[%s] Model: %s", self.log_id, model)
 
         elif response.startswith("ICN"):
@@ -287,48 +311,46 @@ class AnthemDevice(PersistentConnectionDevice):
                             )
 
     def _get_entity_id_for_zone(self, zone_num: int) -> str | None:
-        """Get entity ID for a zone number."""
         if zone_num == 1:
             return f"media_player.{self.identifier}"
         return f"media_player.{self.identifier}.zone{zone_num}"
 
     async def _discover_input_names(self) -> None:
-        """Query input names from receiver."""
         for input_num in range(1, self._input_count + 1):
             await self._send_command(f"ISN{input_num:02d}?")
             await asyncio.sleep(0.05)
 
     async def power_on(self, zone: int = 1) -> bool:
-        """Turn on the specified zone."""
+        _LOG.error("[%s] DIAGNOSTIC: power_on(zone=%d) called", self.log_id, zone)
         return await self._send_command(f"Z{zone}POW1")
 
     async def power_off(self, zone: int = 1) -> bool:
-        """Turn off the specified zone."""
+        _LOG.error("[%s] DIAGNOSTIC: power_off(zone=%d) called", self.log_id, zone)
         return await self._send_command(f"Z{zone}POW0")
 
     async def set_volume(self, volume_db: int, zone: int = 1) -> bool:
-        """Set volume in dB (-90 to 0)."""
         volume_db = max(-90, min(0, volume_db))
+        _LOG.error("[%s] DIAGNOSTIC: set_volume(zone=%d, volume=%d) called", self.log_id, zone, volume_db)
         return await self._send_command(f"Z{zone}VOL{volume_db}")
 
     async def volume_up(self, zone: int = 1) -> bool:
-        """Increase volume by 1dB."""
+        _LOG.error("[%s] DIAGNOSTIC: volume_up(zone=%d) called", self.log_id, zone)
         return await self._send_command(f"Z{zone}VUP")
 
     async def volume_down(self, zone: int = 1) -> bool:
-        """Decrease volume by 1dB."""
+        _LOG.error("[%s] DIAGNOSTIC: volume_down(zone=%d) called", self.log_id, zone)
         return await self._send_command(f"Z{zone}VDN")
 
     async def set_mute(self, muted: bool, zone: int = 1) -> bool:
-        """Set mute state."""
+        _LOG.error("[%s] DIAGNOSTIC: set_mute(zone=%d, muted=%s) called", self.log_id, zone, muted)
         return await self._send_command(f"Z{zone}MUT{'1' if muted else '0'}")
 
     async def select_input(self, input_num: int, zone: int = 1) -> bool:
-        """Select input source."""
+        _LOG.error("[%s] DIAGNOSTIC: select_input(zone=%d, input=%d) called", self.log_id, zone, input_num)
         return await self._send_command(f"Z{zone}INP{input_num}")
 
     async def query_status(self, zone: int = 1) -> bool:
-        """Query all status for a zone."""
+        _LOG.error("[%s] DIAGNOSTIC: query_status(zone=%d) called", self.log_id, zone)
         commands = [f"Z{zone}POW?", f"Z{zone}VOL?", f"Z{zone}MUT?", f"Z{zone}INP?"]
         for cmd in commands:
             await self._send_command(cmd)
@@ -375,7 +397,6 @@ class AnthemDevice(PersistentConnectionDevice):
         ]
 
     def get_input_number_by_name(self, name: str) -> int | None:
-        """Get input number by name."""
         for num, inp_name in self._input_names.items():
             if inp_name == name:
                 return num
@@ -400,5 +421,4 @@ class AnthemDevice(PersistentConnectionDevice):
         return default_map.get(name)
 
     def get_zone_state(self, zone: int) -> dict[str, Any]:
-        """Get current state for a zone."""
         return self._zone_states.get(zone, {})

@@ -1,5 +1,5 @@
 """
-Anthem Remote Entity - Working version with proper send_cmd handling.
+Anthem Remote Entity.
 
 :copyright: (c) 2025 by Meir Miyara.
 :license: MPL-2.0, see LICENSE for more details.
@@ -43,12 +43,10 @@ class AnthemRemote(Remote):
         device: AnthemDevice,
         zone_config: ZoneConfig,
     ):
-        """Initialize remote entity with UI pages."""
         self._device = device
         self._device_config = device_config
         self._zone_config = zone_config
 
-        # Create entity ID
         if zone_config.zone_number == 1:
             entity_id = f"remote.{device_config.identifier}"
             entity_name = f"{device_config.name} Audio Controls"
@@ -60,13 +58,9 @@ class AnthemRemote(Remote):
                 f"{device_config.name} Zone {zone_config.zone_number} Audio Controls"
             )
 
-        # Features - Only SEND_CMD (no power control)
         features = [Features.SEND_CMD]
-
-        # No STATE attribute needed for remote entities without on_off
         attributes = {}
 
-        # Initialize base class WITHOUT options
         super().__init__(
             entity_id,
             entity_name,
@@ -75,9 +69,7 @@ class AnthemRemote(Remote):
             cmd_handler=self.handle_command,
         )
 
-        # Define ALL simple commands
         simple_commands = [
-            # Listening Modes
             "DOLBY_SURROUND",
             "DTS_NEURAL_X",
             "ANTHEMLOGIC_CINEMA",
@@ -89,18 +81,14 @@ class AnthemRemote(Remote):
             "PLIIX_MUSIC",
             "NEO6_CINEMA",
             "NEO6_MUSIC",
-            # Audio Mode Navigation
             "AUDIO_MODE_UP",
             "AUDIO_MODE_DOWN",
-            # Tone Controls
             "BASS_UP",
             "BASS_DOWN",
             "TREBLE_UP",
             "TREBLE_DOWN",
-            # Balance
             "BALANCE_LEFT",
             "BALANCE_RIGHT",
-            # Dolby Settings
             "DOLBY_DRC_NORMAL",
             "DOLBY_DRC_REDUCED",
             "DOLBY_DRC_LATE_NIGHT",
@@ -108,7 +96,6 @@ class AnthemRemote(Remote):
             "DOLBY_CENTER_SPREAD_OFF",
         ]
 
-        # Define UI with pages
         user_interface = {
             "pages": [
                 {
@@ -116,7 +103,6 @@ class AnthemRemote(Remote):
                     "name": "Audio Modes",
                     "grid": {"width": 4, "height": 6},
                     "items": [
-                        # Row 1: Main Modes
                         {
                             "type": "text",
                             "text": "Dolby\nSurround",
@@ -131,7 +117,6 @@ class AnthemRemote(Remote):
                             "location": {"x": 2, "y": 0},
                             "size": {"width": 2, "height": 1},
                         },
-                        # Row 2: AnthemLogic
                         {
                             "type": "text",
                             "text": "AnthemLogic\nCinema",
@@ -146,7 +131,6 @@ class AnthemRemote(Remote):
                             "location": {"x": 2, "y": 1},
                             "size": {"width": 2, "height": 1},
                         },
-                        # Row 3: Stereo Modes
                         {
                             "type": "text",
                             "text": "Stereo",
@@ -161,7 +145,6 @@ class AnthemRemote(Remote):
                             "location": {"x": 2, "y": 2},
                             "size": {"width": 2, "height": 1},
                         },
-                        # Row 4: Direct + Mode Navigation
                         {
                             "type": "text",
                             "text": "Direct",
@@ -188,7 +171,6 @@ class AnthemRemote(Remote):
                     "name": "Tone Control",
                     "grid": {"width": 4, "height": 6},
                     "items": [
-                        # Bass Controls
                         {
                             "type": "text",
                             "text": "Bass",
@@ -207,7 +189,6 @@ class AnthemRemote(Remote):
                             "command": {"cmd_id": "BASS_DOWN"},
                             "location": {"x": 3, "y": 0},
                         },
-                        # Treble Controls
                         {
                             "type": "text",
                             "text": "Treble",
@@ -226,7 +207,6 @@ class AnthemRemote(Remote):
                             "command": {"cmd_id": "TREBLE_DOWN"},
                             "location": {"x": 3, "y": 1},
                         },
-                        # Balance Controls
                         {
                             "type": "text",
                             "text": "Balance",
@@ -252,7 +232,6 @@ class AnthemRemote(Remote):
                     "name": "Dolby Settings",
                     "grid": {"width": 4, "height": 6},
                     "items": [
-                        # Dynamic Range
                         {
                             "type": "text",
                             "text": "DRC\nNormal",
@@ -274,7 +253,6 @@ class AnthemRemote(Remote):
                             "location": {"x": 0, "y": 1},
                             "size": {"width": 2, "height": 1},
                         },
-                        # Center Spread
                         {
                             "type": "text",
                             "text": "Center\nSpread ON",
@@ -294,7 +272,6 @@ class AnthemRemote(Remote):
             ]
         }
 
-        # Set options as property AFTER initialization
         self.options = {
             Options.SIMPLE_COMMANDS: simple_commands,
             "user_interface": user_interface,
@@ -305,25 +282,40 @@ class AnthemRemote(Remote):
             entity_id,
             len(simple_commands),
         )
+        
+        _LOG.error(
+            "[%s] DIAGNOSTIC: Remote entity created with device instance ID=%s",
+            entity_id,
+            id(device)
+        )
 
-        # Register for device events
         device.events.on("UPDATE", self._on_device_update)
 
     async def _on_device_update(
         self, entity_id: str, update_data: dict[str, Any]
     ) -> None:
-        """Handle device state updates."""
         pass
 
     async def handle_command(
         self, entity: Remote, cmd_id: str, params: dict[str, Any] | None
     ) -> StatusCodes:
         _LOG.info("[%s] Command: %s %s", self.id, cmd_id, params or "")
+        
+        _LOG.error(
+            "[%s] DIAGNOSTIC: handle_command() called - Device instance ID=%s",
+            self.id,
+            id(self._device)
+        )
+        _LOG.error(
+            "[%s] DIAGNOSTIC: Device.is_connected=%s, Device._writer is None? %s",
+            self.id,
+            self._device.is_connected,
+            self._device._writer is None
+        )
 
         try:
             zone = self._zone_config.zone_number
 
-            # CRITICAL: Check for send_cmd first
             if cmd_id != Commands.SEND_CMD:
                 _LOG.warning("[%s] Unsupported command type: %s", self.id, cmd_id)
                 return StatusCodes.NOT_FOUND
@@ -333,81 +325,81 @@ class AnthemRemote(Remote):
                 return StatusCodes.BAD_REQUEST
 
             command = params["command"]
-            _LOG.debug("[%s] Executing command: %s", self.id, command)
+            _LOG.error("[%s] DIAGNOSTIC: About to execute command: %s", self.id, command)
 
-            # Listening Modes
+            success = False
+            
             if command == "DOLBY_SURROUND":
-                await self._device._send_command(f"Z{zone}ALM3")
-                return StatusCodes.OK
+                _LOG.error("[%s] DIAGNOSTIC: Executing DOLBY_SURROUND -> Z%dALM3", self.id, zone)
+                success = await self._device._send_command(f"Z{zone}ALM3")
+                
             elif command == "DTS_NEURAL_X":
-                await self._device._send_command(f"Z{zone}ALM4")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ALM4")
+                
             elif command == "ANTHEMLOGIC_CINEMA":
-                await self._device._send_command(f"Z{zone}ALM1")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ALM1")
+                
             elif command == "ANTHEMLOGIC_MUSIC":
-                await self._device._send_command(f"Z{zone}ALM2")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ALM2")
+                
             elif command == "STEREO":
-                await self._device._send_command(f"Z{zone}ALM5")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ALM5")
+                
             elif command == "MULTI_CHANNEL_STEREO":
-                await self._device._send_command(f"Z{zone}ALM6")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ALM6")
+                
             elif command == "DIRECT":
-                await self._device._send_command(f"Z{zone}ALM15")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ALM15")
 
-            # Audio Mode Navigation
             elif command == "AUDIO_MODE_UP":
-                await self._device._send_command(f"Z{zone}AUP")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}AUP")
+                
             elif command == "AUDIO_MODE_DOWN":
-                await self._device._send_command(f"Z{zone}ADN")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}ADN")
 
-            # Tone Controls
             elif command == "BASS_UP":
-                await self._device._send_command(f"Z{zone}TUP0")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}TUP0")
+                
             elif command == "BASS_DOWN":
-                await self._device._send_command(f"Z{zone}TDN0")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}TDN0")
+                
             elif command == "TREBLE_UP":
-                await self._device._send_command(f"Z{zone}TUP1")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}TUP1")
+                
             elif command == "TREBLE_DOWN":
-                await self._device._send_command(f"Z{zone}TDN1")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}TDN1")
 
-            # Balance
             elif command == "BALANCE_LEFT":
-                await self._device._send_command(f"Z{zone}BLT")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}BLT")
+                
             elif command == "BALANCE_RIGHT":
-                await self._device._send_command(f"Z{zone}BRT")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}BRT")
 
-            # Dolby Settings
             elif command == "DOLBY_DRC_NORMAL":
-                await self._device._send_command(f"Z{zone}DYN0")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}DYN0")
+                
             elif command == "DOLBY_DRC_REDUCED":
-                await self._device._send_command(f"Z{zone}DYN1")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}DYN1")
+                
             elif command == "DOLBY_DRC_LATE_NIGHT":
-                await self._device._send_command(f"Z{zone}DYN2")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}DYN2")
+                
             elif command == "DOLBY_CENTER_SPREAD_ON":
-                await self._device._send_command(f"Z{zone}DSCS1")
-                return StatusCodes.OK
+                success = await self._device._send_command(f"Z{zone}DSCS1")
+                
             elif command == "DOLBY_CENTER_SPREAD_OFF":
-                await self._device._send_command(f"Z{zone}DSCS0")
-                return StatusCodes.OK
-
+                success = await self._device._send_command(f"Z{zone}DSCS0")
             else:
                 _LOG.warning("[%s] Unknown audio command: %s", self.id, command)
                 return StatusCodes.NOT_FOUND
+
+            _LOG.error("[%s] DIAGNOSTIC: Command execution result: success=%s", self.id, success)
+            
+            if not success:
+                _LOG.error("[%s] CRITICAL ERROR: Command failed to send to device!", self.id)
+                return StatusCodes.SERVER_ERROR
+            
+            return StatusCodes.OK
 
         except Exception as err:
             _LOG.error("[%s] Error executing command %s: %s", self.id, cmd_id, err)
@@ -415,5 +407,4 @@ class AnthemRemote(Remote):
 
     @property
     def zone_number(self) -> int:
-        """Get zone number."""
         return self._zone_config.zone_number
