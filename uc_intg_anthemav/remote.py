@@ -94,6 +94,7 @@ class AnthemRemote(Remote):
             "DOLBY_DRC_LATE_NIGHT",
             "DOLBY_CENTER_SPREAD_ON",
             "DOLBY_CENTER_SPREAD_OFF",
+            "INFO",
         ]
 
         user_interface = {
@@ -163,6 +164,13 @@ class AnthemRemote(Remote):
                             "icon": "uc:down-arrow",
                             "command": {"cmd_id": "AUDIO_MODE_DOWN"},
                             "location": {"x": 3, "y": 3},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Info",
+                            "command": {"cmd_id": "INFO"},
+                            "location": {"x": 0, "y": 4},
+                            "size": {"width": 2, "height": 1},
                         },
                     ],
                 },
@@ -389,6 +397,10 @@ class AnthemRemote(Remote):
                 
             elif command == "DOLBY_CENTER_SPREAD_OFF":
                 success = await self._device._send_command(f"Z{zone}DSCS0")
+            
+            elif command == "INFO":
+                success = await self._device.set_osd_info(1)
+            
             else:
                 _LOG.warning("[%s] Unknown audio command: %s", self.id, command)
                 return StatusCodes.NOT_FOUND

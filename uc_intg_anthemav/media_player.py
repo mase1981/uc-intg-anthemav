@@ -26,7 +26,6 @@ class AnthemMediaPlayer(MediaPlayer):
         self._device_config = device_config
         self._zone_config = zone_config
         
-        # Create entity ID
         if zone_config.zone_number == 1:
             entity_id = f"media_player.{device_config.identifier}"
             entity_name = device_config.name
@@ -34,7 +33,6 @@ class AnthemMediaPlayer(MediaPlayer):
             entity_id = f"media_player.{device_config.identifier}.zone{zone_config.zone_number}"
             entity_name = f"{device_config.name} {zone_config.name}"
         
-        # Define features
         features = [
             Features.ON_OFF,
             Features.VOLUME,
@@ -45,18 +43,14 @@ class AnthemMediaPlayer(MediaPlayer):
             Features.SELECT_SOURCE
         ]
         
-        # Initial attributes
-        # CRITICAL: SOURCE_LIST must be empty initially!
-        # It gets populated after input discovery via device events
         attributes = {
             Attributes.STATE: States.UNAVAILABLE,
             Attributes.VOLUME: 0,
             Attributes.MUTED: False,
             Attributes.SOURCE: "",
-            Attributes.SOURCE_LIST: []  # Empty! Gets populated after discovery
+            Attributes.SOURCE_LIST: []
         }
         
-        # Simple commands
         options = {
             Options.SIMPLE_COMMANDS: [
                 Commands.ON,
@@ -102,7 +96,6 @@ class AnthemMediaPlayer(MediaPlayer):
             elif cmd_id == Commands.VOLUME:
                 if params and "volume" in params:
                     volume_pct = float(params["volume"])
-                    # Convert percentage to dB (-90 to 0)
                     volume_db = int((volume_pct * 90 / 100) - 90)
                     success = await self._device.set_volume(volume_db, zone)
                     return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
@@ -117,8 +110,7 @@ class AnthemMediaPlayer(MediaPlayer):
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
             
             elif cmd_id == Commands.MUTE_TOGGLE:
-                current_mute = self.attributes.get(Attributes.MUTED, False)
-                success = await self._device.set_mute(not current_mute, zone)
+                success = await self._device.mute_toggle(zone)
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
             
             elif cmd_id == Commands.MUTE:

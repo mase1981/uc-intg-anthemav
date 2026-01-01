@@ -29,9 +29,8 @@ class AnthemDevice(PersistentConnectionDevice):
         self._input_names: dict[int, str] = {}
         self._input_count: int = 0
         
-        # VOLUME DEBOUNCING: Track last volume update per zone
         self._last_volume_update: dict[int, tuple[int, float]] = {}
-        self._volume_debounce_ms = 100  # Ignore duplicate updates within 100ms
+        self._volume_debounce_ms = 100
 
     @property
     def identifier(self) -> str:
@@ -66,15 +65,13 @@ class AnthemDevice(PersistentConnectionDevice):
             self._device_config.host, self._device_config.port
         )
 
-        # Send initialization sequence
-        await self._send_command("ECH0")  # Disable command echo
+        await self._send_command("ECH0")
         await asyncio.sleep(0.1)
-        await self._send_command("SIP1")  # Enable Standby IP Control
+        await self._send_command("SIP1")
         await asyncio.sleep(0.1)
-        await self._send_command("ICN?")  # Query input count
+        await self._send_command("ICN?")
         await asyncio.sleep(0.2)
 
-        # Query initial state for all zones
         for zone in self._device_config.zones:
             if zone.enabled:
                 await self._send_command(f"Z{zone.zone_number}POW?")
@@ -110,7 +107,6 @@ class AnthemDevice(PersistentConnectionDevice):
                 decoded = data.decode("ascii", errors="ignore")
                 buffer += decoded
 
-                # CRITICAL: Split on semicolon, not newline!
                 while ";" in buffer:
                     line, buffer = buffer.split(";", 1)
                     line = line.strip()
@@ -118,7 +114,6 @@ class AnthemDevice(PersistentConnectionDevice):
                         await self._process_response(line)
 
             except asyncio.TimeoutError:
-                # Normal timeout, continue
                 continue
             except Exception as err:
                 _LOG.error("[%s] Error in message loop: %s", self.log_id, err)
@@ -146,17 +141,14 @@ class AnthemDevice(PersistentConnectionDevice):
         """Process a response from the receiver."""
         _LOG.debug("[%s] RECEIVED: %s", self.log_id, response)
 
-        # Ignore error responses
         if response.startswith("!I") or response.startswith("!E"):
             _LOG.warning("[%s] Device error: %s", self.log_id, response)
             return
 
-        # Update internal state
         self._update_state_from_response(response)
 
     def _update_state_from_response(self, response: str) -> None:
         """Update device state from response."""
-        # Device info responses
         if response.startswith("IDM"):
             model = response[3:].strip()
             self._state = {"model": model}
@@ -167,7 +159,6 @@ class AnthemDevice(PersistentConnectionDevice):
             if count_match:
                 self._input_count = int(count_match.group(1))
                 _LOG.info("[%s] Input count: %d", self.log_id, self._input_count)
-                # Query input names
                 asyncio.create_task(self._discover_input_names())
 
         elif response.startswith("ISN") and len(response) > 5:
@@ -178,7 +169,6 @@ class AnthemDevice(PersistentConnectionDevice):
                 self._input_names[input_num] = input_name
                 _LOG.debug("[%s] Input %d: %s", self.log_id, input_num, input_name)
 
-                # If we've discovered all inputs, emit source list update to all entities
                 if len(self._input_names) == self._input_count:
                     _LOG.info(
                         "[%s] All %d inputs discovered, updating source lists",
@@ -187,7 +177,6 @@ class AnthemDevice(PersistentConnectionDevice):
                     )
                     source_list = self.get_input_list()
 
-                    # Emit source_list update to all zones
                     for zone_config in self._device_config.zones:
                         if zone_config.enabled:
                             entity_id = self._get_entity_id_for_zone(
@@ -200,7 +189,6 @@ class AnthemDevice(PersistentConnectionDevice):
                                     {MediaAttributes.SOURCE_LIST: source_list},
                                 )
 
-        # Zone state responses
         elif response.startswith("Z"):
             zone_match = re.match(r"Z(\d+)", response)
             if zone_match:
@@ -218,7 +206,6 @@ class AnthemDevice(PersistentConnectionDevice):
                     new_state = "ON" if power else "OFF"
                     self._state = new_state
 
-                    # Emit update for this specific zone entity
                     if entity_id:
                         self.events.emit(
                             DeviceEvents.UPDATE,
@@ -231,7 +218,6 @@ class AnthemDevice(PersistentConnectionDevice):
                     if vol_match:
                         volume_db = int(vol_match.group(1))
                         
-                        # CRITICAL FIX: Validate volume is in Anthem's valid range
                         if volume_db < -90 or volume_db > 0:
                             _LOG.warning(
                                 "[%s] Invalid volume dB value: %d (must be -90 to 0), ignoring",
@@ -241,7 +227,6 @@ class AnthemDevice(PersistentConnectionDevice):
                             return
                         
                         state["volume_db"] = volume_db
-                        # Convert to percentage (0-100 range)
                         volume_pct = int(((volume_db + 90) / 90) * 100)
                         
                         volume_pct = max(0, min(100, volume_pct))
@@ -261,7 +246,6 @@ class AnthemDevice(PersistentConnectionDevice):
                                 )
                                 return
                         
-                        # Store this update
                         self._last_volume_update[zone_num] = (volume_pct, current_time)
 
                         if entity_id:
@@ -333,10 +317,6 @@ class AnthemDevice(PersistentConnectionDevice):
             await self._send_command(f"ISN{input_num:02d}?")
             await asyncio.sleep(0.05)
 
-    # ========================================================================
-    # Public Control Methods
-    # ========================================================================
-
     async def power_on(self, zone: int = 1) -> bool:
         """Turn on the specified zone."""
         return await self._send_command(f"Z{zone}POW1")
@@ -362,9 +342,18 @@ class AnthemDevice(PersistentConnectionDevice):
         """Set mute state."""
         return await self._send_command(f"Z{zone}MUT{'1' if muted else '0'}")
 
+    async def mute_toggle(self, zone: int = 1) -> bool:
+        """Toggle mute state using native Anthem command."""
+        return await self._send_command(f"Z{zone}MUTt")
+
     async def select_input(self, input_num: int, zone: int = 1) -> bool:
         """Select input source."""
         return await self._send_command(f"Z{zone}INP{input_num}")
+
+    async def set_osd_info(self, mode: int) -> bool:
+        """Set on-screen display info mode (0=Off, 1=16:9, 2=2.4:1)."""
+        mode = max(0, min(2, mode))
+        return await self._send_command(f"GCOSID{mode}")
 
     async def query_status(self, zone: int = 1) -> bool:
         """Query all status for a zone."""
@@ -383,7 +372,6 @@ class AnthemDevice(PersistentConnectionDevice):
             )
             return self._device_config.discovered_inputs
 
-        # PRIORITY 2: Use runtime discovered names
         if self._input_names and self._input_count > 0:
             _LOG.debug(
                 "[%s] Using runtime discovered inputs (%d sources)",
@@ -395,7 +383,6 @@ class AnthemDevice(PersistentConnectionDevice):
                 for i in range(1, self._input_count + 1)
             ]
 
-        # PRIORITY 3: Fallback to defaults
         _LOG.debug("[%s] Using default input list (discovery incomplete)", self.log_id)
         return [
             "HDMI 1",
@@ -421,7 +408,6 @@ class AnthemDevice(PersistentConnectionDevice):
             if inp_name == name:
                 return num
 
-        # Fallback to default mapping
         default_map = {
             "HDMI 1": 1,
             "HDMI 2": 2,
