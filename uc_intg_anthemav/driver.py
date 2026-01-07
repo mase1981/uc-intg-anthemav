@@ -1,129 +1,123 @@
 """
-Anthem A/V integration driver for Unfolded Circle Remote.
+Anthem AV driver implementation.
 
-:copyright: (c) 2025 by Meir Miyara.
+:copyright: (c) 2025 by User.
 :license: MPL-2.0, see LICENSE for more details.
 """
 
+import asyncio
 import logging
+from typing import Callable, Optional
 
-from ucapi import Entity, EntityTypes, media_player
-from ucapi_framework import BaseIntegrationDriver
-
-from uc_intg_anthemav.config import AnthemDeviceConfig
-from uc_intg_anthemav.device import AnthemDevice
-from uc_intg_anthemav.media_player import AnthemMediaPlayer
-from uc_intg_anthemav.remote import AnthemRemote
+from ucapi_framework import BaseDriver, DriverEvents
 
 _LOG = logging.getLogger(__name__)
 
 
-class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
-    """Anthem A/V integration driver."""
+class AnthemDriver(BaseDriver):
+    """Driver for Anthem AV receivers."""
 
-    def __init__(self):
-        super().__init__(
-            device_class=AnthemDevice,
-            entity_classes=[],
-        )
+    def __init__(self, host: str, port: int = 14999):
+        """Initialize Anthem driver."""
+        super().__init__()
+        self.host = host
+        self.port = port
+        self._reader: Optional[asyncio.StreamReader] = None
+        self._writer: Optional[asyncio.StreamWriter] = None
+        self._connected = False
+        
+        # Callbacks for dynamic discovery
+        self.on_input_discovered: Optional[Callable[[int, str], None]] = None
 
-    def create_entities(
-        self, device_config: AnthemDeviceConfig, device: AnthemDevice
-    ) -> list[Entity]:
-        """Create both media player and remote entities for each zone."""
-        entities = []
+    @property
+    def is_connected(self) -> bool:
+        """Return True if connected."""
+        return self._connected
 
-        for zone_config in device_config.zones:
-            if not zone_config.enabled:
-                continue
-
-            media_player_entity = AnthemMediaPlayer(device_config, device, zone_config)
-            entities.append(media_player_entity)
-            _LOG.info(
-                "Created media player: %s for %s Zone %d",
-                media_player_entity.id,
-                device_config.name,
-                zone_config.zone_number,
+    async def connect(self) -> None:
+        """Connect to Anthem receiver."""
+        try:
+            _LOG.info("Connecting to Anthem at %s:%s", self.host, self.port)
+            self._reader, self._writer = await asyncio.open_connection(
+                self.host, self.port
             )
+            self._connected = True
+            self.emit(DriverEvents.CONNECTED)
+            
+            # Start background read loop to catch ISN messages
+            asyncio.create_task(self._read_loop())
+            
+        except Exception as err:
+            _LOG.error("Connection failed: %s", err)
+            self.emit(DriverEvents.DISCONNECTED)
+            self._connected = False
+            raise
 
-            remote_entity = AnthemRemote(device_config, device, zone_config)
-            entities.append(remote_entity)
-            _LOG.info(
-                "Created remote: %s for %s Zone %d audio controls",
-                remote_entity.id,
-                device_config.name,
-                zone_config.zone_number,
-            )
-
-        return entities
-
-    async def refresh_entity_state(self, entity_id: str) -> None:
-        """
-        Refresh entity state by querying device and updating SOURCE_LIST.
-        """
-        _LOG.info("[%s] Refreshing entity state", entity_id)
-
-        device_id = self.device_from_entity_id(entity_id)
-        if not device_id:
-            _LOG.warning("[%s] Could not extract device_id", entity_id)
-            return
-
-        device = self._configured_devices.get(device_id)
-        if not device:
-            _LOG.warning("[%s] Device %s not found", entity_id, device_id)
-            return
-
-        configured_entity = self.api.configured_entities.get(entity_id)
-        if not configured_entity:
-            _LOG.debug("[%s] Entity not configured yet", entity_id)
-            return
-
-        if not device.is_connected:
-            _LOG.debug("[%s] Device not connected, marking unavailable", entity_id)
-            await super().refresh_entity_state(entity_id)
-            return
-
-        if configured_entity.entity_type == EntityTypes.MEDIA_PLAYER:
-            source_list = device.get_input_list()
-            if source_list:
-                self.api.configured_entities.update_attributes(
-                    entity_id, {media_player.Attributes.SOURCE_LIST: source_list}
-                )
-                _LOG.info(
-                    "[%s] Updated SOURCE_LIST with %d sources", entity_id, len(source_list)
-                )
-
-        parts = entity_id.split(".")
-        if len(parts) == 2:
-            zone_num = 1
-        elif len(parts) == 3 and parts[2].startswith("zone"):
+    async def disconnect(self) -> None:
+        """Disconnect from device."""
+        self._connected = False
+        if self._writer:
             try:
-                zone_num = int(parts[2].replace("zone", ""))
-            except ValueError:
-                _LOG.error("[%s] Invalid zone format: %s", entity_id, parts[2])
-                return
-        else:
-            zone_num = 1
+                self._writer.close()
+                await self._writer.wait_closed()
+            except Exception:
+                pass
+        self.emit(DriverEvents.DISCONNECTED)
 
-        _LOG.info("[%s] Querying device status for Zone %d", entity_id, zone_num)
-        await device.query_status(zone_num)
+    async def send_command(self, command: str) -> None:
+        """Send command to device."""
+        if not self._writer or not self._connected:
+            _LOG.warning("Attempted to send command while disconnected")
+            return
 
-    def get_entity_ids_for_device(self, device_id: str) -> list[str]:
-        """Get all entity IDs for a device."""
-        device_config = self.get_device_config(device_id)
-        if not device_config:
-            return []
+        try:
+            _LOG.debug("TX: %s", command)
+            self._writer.write(command.encode())
+            await self._writer.drain()
+        except Exception as err:
+            _LOG.error("Failed to send command: %s", err)
+            await self.disconnect()
 
-        entity_ids = []
-        for zone in device_config.zones:
-            if not zone.enabled:
-                continue
+    async def _read_loop(self) -> None:
+        """Continuous read loop for incoming data."""
+        buffer = ""
+        while self._connected and self._reader:
+            try:
+                data = await self._reader.read(1024)
+                if not data:
+                    break
+                
+                text = data.decode("utf-8", errors="ignore")
+                buffer += text
+                while ";" in buffer:
+                    message, buffer = buffer.split(";", 1)
+                    await self._process_message(message.strip())
+                    
+            except Exception as err:
+                _LOG.error("Read loop error: %s", err)
+                break
+        
+        await self.disconnect()
 
-            if zone.zone_number == 1:
-                entity_ids.append(f"media_player.{device_id}")
-                entity_ids.append(f"remote.{device_id}")
-            else:
-                entity_ids.append(f"media_player.{device_id}.zone{zone.zone_number}")
-                entity_ids.append(f"remote.{device_id}.zone{zone.zone_number}")
+    async def _process_message(self, message: str) -> None:
+        """Process incoming protocol message."""
+        if not message:
+            return
 
-        return entity_ids
+        _LOG.debug("RX: %s", message)
+        if message.startswith("ISN"):
+            try:
+                # Extract ID (index 3-5) and Name (index 5+)
+                input_id_str = message[3:5]
+                input_name = message[5:]
+                
+                if input_id_str.isdigit():
+                    input_id = int(input_id_str)
+                    # ID 00 usually means invalid/none in Anthem protocol
+                    if input_id > 0 and self.on_input_discovered:
+                        self.on_input_discovered(input_id, input_name)
+            except Exception as err:
+                _LOG.warning("Failed to parse ISN message: %s", err)
+
+        # Emit for generic listeners (Power, Vol, etc.)
+        self.emit(DriverEvents.MESSAGE, message)
