@@ -1,5 +1,5 @@
 """
-Anthem A/V setup flow - HOTFIX for AttributeError.
+Anthem A/V setup flow with dynamic input discovery.
 
 :copyright: (c) 2025 by Meir Miyara.
 :license: MPL-2.0, see LICENSE for more details.
@@ -92,6 +92,7 @@ class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
         identifier = f"anthem_{host.replace('.', '_')}_{port}"
         zones = [ZoneConfig(zone_number=i) for i in range(1, zones_count + 1)]
         
+        # Create temporary config for discovery
         temp_config = AnthemDeviceConfig(
             identifier=identifier,
             name=name,
@@ -105,8 +106,10 @@ class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
         _LOG.info("=" * 60)
         
         try:
+            # Create temporary device for discovery
             discovery_device = AnthemDevice(temp_config)
             
+            # Connect with timeout
             connected = await asyncio.wait_for(
                 discovery_device.connect(),
                 timeout=15.0
@@ -119,8 +122,8 @@ class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
             
             _LOG.info("SETUP: ✅ Connected! Waiting for input discovery...")
             
-            # CRITICAL: Wait for input discovery to complete
-            max_wait = 5.0
+            # The device will query ICN (input count) and ISN (input names) automatically
+            max_wait = 5.0  # Wait up to 5 seconds for discovery
             wait_interval = 0.2
             total_waited = 0.0
             
@@ -128,8 +131,10 @@ class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
                 await asyncio.sleep(wait_interval)
                 total_waited += wait_interval
                 
+                # Check if we have input count
                 if discovery_device._input_count > 0:
                     _LOG.info("SETUP: Input count discovered: %d", discovery_device._input_count)
+                    # Wait a bit more for all input names to be discovered
                     await asyncio.sleep(1.0)
                     break
             
@@ -144,7 +149,7 @@ class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
                     for i in range(1, input_count + 1)
                 ]
             else:
-                # Fallback to defaults
+                # Fallback to defaults if discovery incomplete
                 _LOG.warning("SETUP: Input discovery incomplete, using defaults")
                 discovered_inputs = [
                     "HDMI 1", "HDMI 2", "HDMI 3", "HDMI 4",
@@ -165,8 +170,6 @@ class AnthemSetupFlow(BaseSetupFlow[AnthemDeviceConfig]):
             await discovery_device.disconnect()
             _LOG.info("SETUP: Discovery connection closed")
             
-            # Create FINAL config WITH discovered inputs
-            # NOTE: Model doesn't matter - all Anthem models use same protocol
             final_config = AnthemDeviceConfig(
                 identifier=identifier,
                 name=name,

@@ -30,8 +30,5 @@ class AnthemDeviceConfig:
     model: str = "AVM"
     port: int = 14999
     zones: list[ZoneConfig] = field(default_factory=lambda: [ZoneConfig(1)])
-
-    # CRITICAL: Store discovered inputs from setup flow
-    # This is populated during query_device() BEFORE entities are created
     discovered_inputs: list[str] = field(default_factory=list)
     discovered_model: str = "Unknown"
