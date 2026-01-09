@@ -28,7 +28,7 @@ class AnthemDevice(PersistentConnectionDevice):
         self._zone_states: dict[int, dict[str, Any]] = {}
         self._input_names: dict[int, str] = {}
         self._input_count: int = 0
-        
+
         self._last_volume_update: dict[int, tuple[int, float]] = {}
         self._volume_debounce_ms = 100
 
@@ -217,7 +217,7 @@ class AnthemDevice(PersistentConnectionDevice):
                     vol_match = re.search(r"VOL(-?\d+)", response)
                     if vol_match:
                         volume_db = int(vol_match.group(1))
-                        
+
                         if volume_db < -90 or volume_db > 0:
                             _LOG.warning(
                                 "[%s] Invalid volume dB value: %d (must be -90 to 0), ignoring",
@@ -225,17 +225,17 @@ class AnthemDevice(PersistentConnectionDevice):
                                 volume_db
                             )
                             return
-                        
+
                         state["volume_db"] = volume_db
                         volume_pct = int(((volume_db + 90) / 90) * 100)
-                        
+
                         volume_pct = max(0, min(100, volume_pct))
-                        
+
                         current_time = time()
                         if zone_num in self._last_volume_update:
                             last_vol, last_time = self._last_volume_update[zone_num]
                             time_diff_ms = (current_time - last_time) * 1000
-                            
+
                             if last_vol == volume_pct and time_diff_ms < self._volume_debounce_ms:
                                 _LOG.debug(
                                     "[%s] Zone %d: Ignoring duplicate volume %d%% (within %dms)",
@@ -245,7 +245,7 @@ class AnthemDevice(PersistentConnectionDevice):
                                     self._volume_debounce_ms
                                 )
                                 return
-                        
+
                         self._last_volume_update[zone_num] = (volume_pct, current_time)
 
                         if entity_id:

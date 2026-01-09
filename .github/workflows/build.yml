@@ -49,6 +49,12 @@ jobs:
                 --collect-all zeroconf \
                 --collect-all ucapi \
                 --collect-all ucapi_framework \
+                --hidden-import uc_intg_${INTG_NAME}.driver \
+                --hidden-import uc_intg_${INTG_NAME}.device \
+                --hidden-import uc_intg_${INTG_NAME}.config \
+                --hidden-import uc_intg_${INTG_NAME}.media_player \
+                --hidden-import uc_intg_${INTG_NAME}.remote \
+                --hidden-import uc_intg_${INTG_NAME}.setup_flow \
                 --paths . \
                 uc_intg_${INTG_NAME}/__init__.py"
 

@@ -86,3 +86,7 @@ Thumbs.db
 
 # Integration specific
 artifacts/
+
+# Ai Tools
+Claude/
+.claude/
