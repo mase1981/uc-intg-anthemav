@@ -306,11 +306,92 @@ class AnthemDevice(PersistentConnectionDevice):
                                 },
                             )
 
+                # Sensor data parsing
+                elif "AIF" in response:
+                    # Audio Input Format (e.g., Z1AIFPCM, Z1AIFDolby Atmos)
+                    format_match = re.search(r"AIF(.+)", response)
+                    if format_match:
+                        audio_format = format_match.group(1).strip()
+                        state["audio_format"] = audio_format
+                        sensor_id = f"sensor.{self.identifier}_audio_format"
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+
+                elif "AIC" in response:
+                    # Audio Input Channels (e.g., Z1AIC5.1, Z1AIC7.1.4)
+                    channels_match = re.search(r"AIC(.+)", response)
+                    if channels_match:
+                        audio_channels = channels_match.group(1).strip()
+                        state["audio_channels"] = audio_channels
+                        sensor_id = f"sensor.{self.identifier}_audio_channels"
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+
+                elif "VIR" in response:
+                    # Video Input Resolution (e.g., Z1VIR1080p, Z1VIR2160p60)
+                    resolution_match = re.search(r"VIR(.+)", response)
+                    if resolution_match:
+                        video_resolution = resolution_match.group(1).strip()
+                        state["video_resolution"] = video_resolution
+                        sensor_id = f"sensor.{self.identifier}_video_resolution"
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+
+                elif "ALM" in response and "?" not in response:
+                    # Audio Listening Mode (e.g., Z1ALM3 = Dolby Surround)
+                    mode_match = re.search(r"ALM(\d+)", response)
+                    if mode_match:
+                        mode_num = int(mode_match.group(1))
+                        listening_mode = self._get_listening_mode_name(mode_num)
+                        state["listening_mode"] = listening_mode
+                        sensor_id = f"sensor.{self.identifier}_listening_mode"
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+
+                elif "AIR" in response or "SRT" in response or "BDP" in response:
+                    # Audio Input Rate/Sample Rate/Bit Depth
+                    # (e.g., Z1AIR48kHz/24bit, Z1SRT48, Z1BDP24)
+                    rate_info = response[response.find("Z") + 2:].strip()
+                    if "AIR" in response:
+                        rate_match = re.search(r"AIR(.+)", response)
+                        if rate_match:
+                            state["sample_rate"] = rate_match.group(1).strip()
+                    elif "SRT" in response:
+                        rate_match = re.search(r"SRT(\d+)", response)
+                        if rate_match:
+                            state["sample_rate"] = f"{rate_match.group(1)} kHz"
+                    elif "BDP" in response:
+                        depth_match = re.search(r"BDP(\d+)", response)
+                        if depth_match:
+                            current_rate = state.get("sample_rate", "")
+                            state["sample_rate"] = f"{current_rate} / {depth_match.group(1)}-bit".strip(" /")
+
+                    sensor_id = f"sensor.{self.identifier}_sample_rate"
+                    self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+
     def _get_entity_id_for_zone(self, zone_num: int) -> str | None:
         """Get entity ID for a zone number."""
         if zone_num == 1:
             return f"media_player.{self.identifier}"
         return f"media_player.{self.identifier}.zone{zone_num}"
+
+    def _get_listening_mode_name(self, mode_num: int) -> str:
+        """Convert listening mode number to friendly name."""
+        mode_names = {
+            0: "None",
+            1: "AnthemLogic Cinema",
+            2: "AnthemLogic Music",
+            3: "Dolby Surround",
+            4: "DTS Neural:X",
+            5: "Stereo",
+            6: "Multi-Channel Stereo",
+            7: "All-Channel Stereo",
+            8: "PLIIx Movie",
+            9: "PLIIx Music",
+            10: "Neo:6 Cinema",
+            11: "Neo:6 Music",
+            12: "Dolby Digital",
+            13: "DTS",
+            14: "PCM Stereo",
+            15: "Direct",
+        }
+        return mode_names.get(mode_num, f"Mode {mode_num}")
 
     async def _discover_input_names(self) -> None:
         """Query custom/virtual input names from receiver (supports up to 30 inputs)."""
@@ -407,8 +488,18 @@ class AnthemDevice(PersistentConnectionDevice):
         return await self._send_command(f"GCOSID{mode}")
 
     async def query_status(self, zone: int = 1) -> bool:
-        """Query all status for a zone."""
-        commands = [f"Z{zone}POW?", f"Z{zone}VOL?", f"Z{zone}MUT?", f"Z{zone}INP?"]
+        """Query all status for a zone including sensor data."""
+        commands = [
+            f"Z{zone}POW?",
+            f"Z{zone}VOL?",
+            f"Z{zone}MUT?",
+            f"Z{zone}INP?",
+            f"Z{zone}AIF?",  # Audio format
+            f"Z{zone}AIC?",  # Audio channels
+            f"Z{zone}VIR?",  # Video resolution
+            f"Z{zone}ALM?",  # Listening mode
+            f"Z{zone}AIR?",  # Sample rate info
+        ]
         for cmd in commands:
             await self._send_command(cmd)
             await asyncio.sleep(0.05)

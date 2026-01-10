@@ -14,6 +14,14 @@ from uc_intg_anthemav.config import AnthemDeviceConfig
 from uc_intg_anthemav.device import AnthemDevice
 from uc_intg_anthemav.media_player import AnthemMediaPlayer
 from uc_intg_anthemav.remote import AnthemRemote
+from uc_intg_anthemav.sensor import (
+    AnthemVolumeSensor,
+    AnthemAudioFormatSensor,
+    AnthemAudioChannelsSensor,
+    AnthemVideoResolutionSensor,
+    AnthemListeningModeSensor,
+    AnthemSampleRateSensor,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -30,13 +38,14 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
     def create_entities(
         self, device_config: AnthemDeviceConfig, device: AnthemDevice
     ) -> list[Entity]:
-        """Create both media player and remote entities for each zone."""
+        """Create media player, remote, and sensor entities for each zone."""
         entities = []
 
         for zone_config in device_config.zones:
             if not zone_config.enabled:
                 continue
 
+            # Create media player entity
             media_player_entity = AnthemMediaPlayer(device_config, device, zone_config)
             entities.append(media_player_entity)
             _LOG.info(
@@ -46,6 +55,7 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
                 zone_config.zone_number,
             )
 
+            # Create remote entity
             remote_entity = AnthemRemote(device_config, device, zone_config)
             entities.append(remote_entity)
             _LOG.info(
@@ -54,6 +64,38 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
                 device_config.name,
                 zone_config.zone_number,
             )
+
+            # Create sensor entities (only for Zone 1 to avoid clutter)
+            if zone_config.zone_number == 1:
+                # Volume sensor (shows actual dB value)
+                volume_sensor = AnthemVolumeSensor(device_config, device, zone_config)
+                entities.append(volume_sensor)
+                _LOG.info("Created sensor: %s for volume monitoring", volume_sensor.id)
+
+                # Audio format sensor
+                audio_format_sensor = AnthemAudioFormatSensor(device_config, device, zone_config)
+                entities.append(audio_format_sensor)
+                _LOG.info("Created sensor: %s for audio format", audio_format_sensor.id)
+
+                # Audio channels sensor
+                audio_channels_sensor = AnthemAudioChannelsSensor(device_config, device, zone_config)
+                entities.append(audio_channels_sensor)
+                _LOG.info("Created sensor: %s for audio channels", audio_channels_sensor.id)
+
+                # Video resolution sensor
+                video_resolution_sensor = AnthemVideoResolutionSensor(device_config, device, zone_config)
+                entities.append(video_resolution_sensor)
+                _LOG.info("Created sensor: %s for video resolution", video_resolution_sensor.id)
+
+                # Listening mode sensor
+                listening_mode_sensor = AnthemListeningModeSensor(device_config, device, zone_config)
+                entities.append(listening_mode_sensor)
+                _LOG.info("Created sensor: %s for listening mode", listening_mode_sensor.id)
+
+                # Sample rate sensor
+                sample_rate_sensor = AnthemSampleRateSensor(device_config, device, zone_config)
+                entities.append(sample_rate_sensor)
+                _LOG.info("Created sensor: %s for sample rate", sample_rate_sensor.id)
 
         return entities
 
@@ -122,6 +164,13 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
             if zone.zone_number == 1:
                 entity_ids.append(f"media_player.{device_id}")
                 entity_ids.append(f"remote.{device_id}")
+                # Add sensor entity IDs (only for Zone 1)
+                entity_ids.append(f"sensor.{device_id}_volume")
+                entity_ids.append(f"sensor.{device_id}_audio_format")
+                entity_ids.append(f"sensor.{device_id}_audio_channels")
+                entity_ids.append(f"sensor.{device_id}_video_resolution")
+                entity_ids.append(f"sensor.{device_id}_listening_mode")
+                entity_ids.append(f"sensor.{device_id}_sample_rate")
             else:
                 entity_ids.append(f"media_player.{device_id}.zone{zone.zone_number}")
                 entity_ids.append(f"remote.{device_id}.zone{zone.zone_number}")
