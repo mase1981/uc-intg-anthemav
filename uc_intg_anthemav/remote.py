@@ -77,11 +77,15 @@ class AnthemRemote(Remote):
             "ANTHEMLOGIC_MUSIC",
             "STEREO",
             "MULTI_CHANNEL_STEREO",
+            "ALL_CHANNEL_STEREO",
             "DIRECT",
             "PLIIX_MOVIE",
             "PLIIX_MUSIC",
             "NEO6_CINEMA",
             "NEO6_MUSIC",
+            "DOLBY_DIGITAL",
+            "DTS",
+            "PCM_STEREO",
             "AUDIO_MODE_UP",
             "AUDIO_MODE_DOWN",
             "BASS_UP",
@@ -174,7 +178,14 @@ class AnthemRemote(Remote):
                             "text": "Direct",
                             "command": {"cmd_id": "DIRECT"},
                             "location": {"x": 0, "y": 3},
-                            "size": {"width": 2, "height": 1},
+                            "size": {"width": 1, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "All-Ch\nStereo",
+                            "command": {"cmd_id": "ALL_CHANNEL_STEREO"},
+                            "location": {"x": 1, "y": 3},
+                            "size": {"width": 1, "height": 1},
                         },
                         {
                             "type": "icon",
@@ -190,23 +201,58 @@ class AnthemRemote(Remote):
                         },
                         {
                             "type": "text",
-                            "text": "Info",
-                            "command": {"cmd_id": "INFO"},
+                            "text": "PLIIx\nMovie",
+                            "command": {"cmd_id": "PLIIX_MOVIE"},
                             "location": {"x": 0, "y": 4},
                             "size": {"width": 1, "height": 1},
                         },
                         {
                             "type": "text",
-                            "text": "ARC\nON",
-                            "command": {"cmd_id": "ARC_ON"},
+                            "text": "PLIIx\nMusic",
+                            "command": {"cmd_id": "PLIIX_MUSIC"},
                             "location": {"x": 1, "y": 4},
                             "size": {"width": 1, "height": 1},
                         },
                         {
                             "type": "text",
-                            "text": "ARC\nOFF",
-                            "command": {"cmd_id": "ARC_OFF"},
+                            "text": "Neo:6\nCinema",
+                            "command": {"cmd_id": "NEO6_CINEMA"},
                             "location": {"x": 2, "y": 4},
+                            "size": {"width": 1, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Neo:6\nMusic",
+                            "command": {"cmd_id": "NEO6_MUSIC"},
+                            "location": {"x": 3, "y": 4},
+                            "size": {"width": 1, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Dolby\nDigital",
+                            "command": {"cmd_id": "DOLBY_DIGITAL"},
+                            "location": {"x": 0, "y": 5},
+                            "size": {"width": 1, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "DTS",
+                            "command": {"cmd_id": "DTS"},
+                            "location": {"x": 1, "y": 5},
+                            "size": {"width": 1, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "PCM\nStereo",
+                            "command": {"cmd_id": "PCM_STEREO"},
+                            "location": {"x": 2, "y": 5},
+                            "size": {"width": 1, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Info",
+                            "command": {"cmd_id": "INFO"},
+                            "location": {"x": 3, "y": 5},
                             "size": {"width": 1, "height": 1},
                         },
                     ],
@@ -379,6 +425,20 @@ class AnthemRemote(Remote):
                             "location": {"x": 2, "y": 3},
                             "size": {"width": 2, "height": 1},
                         },
+                        {
+                            "type": "text",
+                            "text": "ARC\nON",
+                            "command": {"cmd_id": "ARC_ON"},
+                            "location": {"x": 0, "y": 4},
+                            "size": {"width": 2, "height": 1},
+                        },
+                        {
+                            "type": "text",
+                            "text": "ARC\nOFF",
+                            "command": {"cmd_id": "ARC_OFF"},
+                            "location": {"x": 2, "y": 4},
+                            "size": {"width": 2, "height": 1},
+                        },
                     ],
                 },
                 {
@@ -505,7 +565,7 @@ class AnthemRemote(Remote):
         }
 
         _LOG.info(
-            "[%s] Remote entity initialized with %d commands and 5 UI pages",
+            "[%s] Remote entity initialized with %d commands across 5 UI pages",
             entity_id,
             len(simple_commands),
         )
@@ -548,6 +608,22 @@ class AnthemRemote(Remote):
                 success = await self._device._send_command(f"Z{zone}ALM5")
             elif command == "MULTI_CHANNEL_STEREO":
                 success = await self._device._send_command(f"Z{zone}ALM6")
+            elif command == "ALL_CHANNEL_STEREO":
+                success = await self._device._send_command(f"Z{zone}ALM7")
+            elif command == "PLIIX_MOVIE":
+                success = await self._device._send_command(f"Z{zone}ALM8")
+            elif command == "PLIIX_MUSIC":
+                success = await self._device._send_command(f"Z{zone}ALM9")
+            elif command == "NEO6_CINEMA":
+                success = await self._device._send_command(f"Z{zone}ALM10")
+            elif command == "NEO6_MUSIC":
+                success = await self._device._send_command(f"Z{zone}ALM11")
+            elif command == "DOLBY_DIGITAL":
+                success = await self._device._send_command(f"Z{zone}ALM12")
+            elif command == "DTS":
+                success = await self._device._send_command(f"Z{zone}ALM13")
+            elif command == "PCM_STEREO":
+                success = await self._device._send_command(f"Z{zone}ALM14")
             elif command == "DIRECT":
                 success = await self._device._send_command(f"Z{zone}ALM15")
             elif command == "AUDIO_MODE_UP":

@@ -161,8 +161,9 @@ class AnthemDevice(PersistentConnectionDevice):
                 _LOG.info("[%s] Input count: %d", self.log_id, self._input_count)
                 asyncio.create_task(self._discover_input_names())
 
-        elif response.startswith("ISN") and len(response) > 5:
-            input_match = re.match(r"ISN(\d{2})(.+)", response)
+        elif response.startswith("IS") and "IN" in response and len(response) > 5:
+            # Handle ISiINyyyy format for custom input names (i=01-30, yyyy=16 char name)
+            input_match = re.match(r"IS(\d{1,2})IN(.+)", response)
             if input_match:
                 input_num = int(input_match.group(1))
                 input_name = input_match.group(2).strip()
@@ -312,9 +313,10 @@ class AnthemDevice(PersistentConnectionDevice):
         return f"media_player.{self.identifier}.zone{zone_num}"
 
     async def _discover_input_names(self) -> None:
-        """Query input names from receiver."""
+        """Query custom/virtual input names from receiver (supports up to 30 inputs)."""
         for input_num in range(1, self._input_count + 1):
-            await self._send_command(f"ISN{input_num:02d}?")
+            # Use ISiIN? format to query custom input name (i=01-30)
+            await self._send_command(f"IS{input_num}IN?")
             await asyncio.sleep(0.05)
 
     async def power_on(self, zone: int = 1) -> bool:

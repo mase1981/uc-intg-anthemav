@@ -1,6 +1,6 @@
 {
   "driver_id": "anthemav",
-  "version": "1.4.3",
+  "version": "1.4.6",
   "min_core_api": "0.22.0",
   "name": {
     "en": "Anthem A/V Receivers"
@@ -16,7 +16,7 @@
   },
   "home_page": "https://github.com/mase1981/uc-intg-anthemav",
   "support": "https://github.com/mase1981/uc-intg-anthemav/issues",
-  "release_date": "2025-01-01",
+  "release_date": "2025-01-09",
   "setup_data_schema": {
     "title": {
       "en": "Integration setup"
