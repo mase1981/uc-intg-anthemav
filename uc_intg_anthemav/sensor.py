@@ -74,6 +74,15 @@ class AnthemVolumeSensor(Sensor):
                 self.attributes[Attributes.VALUE] = str(volume_db)
                 _LOG.debug("[%s] Volume updated to %d dB", self.id, volume_db)
 
+    def update_from_device(self) -> None:
+        """Update sensor value from device state (called after data received)."""
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if "volume_db" in zone_state:
+            volume_db = zone_state["volume_db"]
+            self.attributes[Attributes.STATE] = States.ON
+            self.attributes[Attributes.VALUE] = str(volume_db)
+            _LOG.debug("[%s] Volume updated to %d dB", self.id, volume_db)
+
     @property
     def zone_number(self) -> int:
         """Get zone number."""
@@ -126,6 +135,15 @@ class AnthemAudioFormatSensor(Sensor):
                 self.attributes[Attributes.STATE] = States.ON
                 self.attributes[Attributes.VALUE] = audio_format
                 _LOG.debug("[%s] Audio format updated to %s", self.id, audio_format)
+
+    def update_from_device(self) -> None:
+        """Update sensor value from device state (called after data received)."""
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if "audio_format" in zone_state:
+            audio_format = zone_state["audio_format"]
+            self.attributes[Attributes.STATE] = States.ON
+            self.attributes[Attributes.VALUE] = audio_format
+            _LOG.debug("[%s] Audio format updated to %s", self.id, audio_format)
 
     @property
     def zone_number(self) -> int:
@@ -180,6 +198,15 @@ class AnthemAudioChannelsSensor(Sensor):
                 self.attributes[Attributes.VALUE] = audio_channels
                 _LOG.debug("[%s] Audio channels updated to %s", self.id, audio_channels)
 
+    def update_from_device(self) -> None:
+        """Update sensor value from device state (called after data received)."""
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if "audio_channels" in zone_state:
+            audio_channels = zone_state["audio_channels"]
+            self.attributes[Attributes.STATE] = States.ON
+            self.attributes[Attributes.VALUE] = audio_channels
+            _LOG.debug("[%s] Audio channels updated to %s", self.id, audio_channels)
+
     @property
     def zone_number(self) -> int:
         """Get zone number."""
@@ -232,6 +259,15 @@ class AnthemVideoResolutionSensor(Sensor):
                 self.attributes[Attributes.STATE] = States.ON
                 self.attributes[Attributes.VALUE] = video_resolution
                 _LOG.debug("[%s] Video resolution updated to %s", self.id, video_resolution)
+
+    def update_from_device(self) -> None:
+        """Update sensor value from device state (called after data received)."""
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if "video_resolution" in zone_state:
+            video_resolution = zone_state["video_resolution"]
+            self.attributes[Attributes.STATE] = States.ON
+            self.attributes[Attributes.VALUE] = video_resolution
+            _LOG.debug("[%s] Video resolution updated to %s", self.id, video_resolution)
 
     @property
     def zone_number(self) -> int:
@@ -286,6 +322,15 @@ class AnthemListeningModeSensor(Sensor):
                 self.attributes[Attributes.VALUE] = listening_mode
                 _LOG.debug("[%s] Listening mode updated to %s", self.id, listening_mode)
 
+    def update_from_device(self) -> None:
+        """Update sensor value from device state (called after data received)."""
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if "listening_mode" in zone_state:
+            listening_mode = zone_state["listening_mode"]
+            self.attributes[Attributes.STATE] = States.ON
+            self.attributes[Attributes.VALUE] = listening_mode
+            _LOG.debug("[%s] Listening mode updated to %s", self.id, listening_mode)
+
     @property
     def zone_number(self) -> int:
         """Get zone number."""
@@ -338,6 +383,15 @@ class AnthemSampleRateSensor(Sensor):
                 self.attributes[Attributes.STATE] = States.ON
                 self.attributes[Attributes.VALUE] = sample_rate
                 _LOG.debug("[%s] Sample rate updated to %s", self.id, sample_rate)
+
+    def update_from_device(self) -> None:
+        """Update sensor value from device state (called after data received)."""
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if "sample_rate" in zone_state:
+            sample_rate = zone_state["sample_rate"]
+            self.attributes[Attributes.STATE] = States.ON
+            self.attributes[Attributes.VALUE] = sample_rate
+            _LOG.debug("[%s] Sample rate updated to %s", self.id, sample_rate)
 
     @property
     def zone_number(self) -> int:

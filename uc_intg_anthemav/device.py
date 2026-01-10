@@ -13,6 +13,7 @@ from time import time
 
 from ucapi_framework import PersistentConnectionDevice, DeviceEvents
 from ucapi.media_player import Attributes as MediaAttributes
+from ucapi.sensor import Attributes as SensorAttributes, States as SensorStates
 
 from .config import AnthemDeviceConfig
 
@@ -187,7 +188,7 @@ class AnthemDevice(PersistentConnectionDevice):
                                 self.events.emit(
                                     DeviceEvents.UPDATE,
                                     entity_id,
-                                    {MediaAttributes.SOURCE_LIST: source_list},
+                                    {MediaAttributes.SOURCE_LIST.value: source_list},
                                 )
 
         elif response.startswith("Z"):
@@ -211,7 +212,7 @@ class AnthemDevice(PersistentConnectionDevice):
                         self.events.emit(
                             DeviceEvents.UPDATE,
                             entity_id,
-                            {MediaAttributes.STATE: new_state},
+                            {MediaAttributes.STATE.value: new_state},
                         )
 
                 elif "VOL" in response:
@@ -261,8 +262,8 @@ class AnthemDevice(PersistentConnectionDevice):
                                 DeviceEvents.UPDATE,
                                 entity_id,
                                 {
-                                    MediaAttributes.VOLUME: volume_pct,
-                                    MediaAttributes.STATE: state.get("power", False)
+                                    MediaAttributes.VOLUME.value: volume_pct,
+                                    MediaAttributes.STATE.value: state.get("power", False)
                                     and "ON"
                                     or "OFF",
                                 },
@@ -277,8 +278,8 @@ class AnthemDevice(PersistentConnectionDevice):
                             DeviceEvents.UPDATE,
                             entity_id,
                             {
-                                MediaAttributes.MUTED: muted,
-                                MediaAttributes.STATE: state.get("power", False)
+                                MediaAttributes.MUTED.value: muted,
+                                MediaAttributes.STATE.value: state.get("power", False)
                                 and "ON"
                                 or "OFF",
                             },
@@ -299,8 +300,8 @@ class AnthemDevice(PersistentConnectionDevice):
                                 DeviceEvents.UPDATE,
                                 entity_id,
                                 {
-                                    MediaAttributes.SOURCE: input_name,
-                                    MediaAttributes.STATE: state.get("power", False)
+                                    MediaAttributes.SOURCE.value: input_name,
+                                    MediaAttributes.STATE.value: state.get("power", False)
                                     and "ON"
                                     or "OFF",
                                 },
@@ -314,7 +315,10 @@ class AnthemDevice(PersistentConnectionDevice):
                         audio_format = format_match.group(1).strip()
                         state["audio_format"] = audio_format
                         sensor_id = f"sensor.{self.identifier}_audio_format"
-                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {
+                            SensorAttributes.STATE.value: SensorStates.ON.value,
+                            SensorAttributes.VALUE.value: audio_format
+                        })
 
                 elif "AIC" in response:
                     # Audio Input Channels (e.g., Z1AIC5.1, Z1AIC7.1.4)
@@ -323,7 +327,10 @@ class AnthemDevice(PersistentConnectionDevice):
                         audio_channels = channels_match.group(1).strip()
                         state["audio_channels"] = audio_channels
                         sensor_id = f"sensor.{self.identifier}_audio_channels"
-                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {
+                            SensorAttributes.STATE.value: SensorStates.ON.value,
+                            SensorAttributes.VALUE.value: audio_channels
+                        })
 
                 elif "VIR" in response:
                     # Video Input Resolution (e.g., Z1VIR1080p, Z1VIR2160p60)
@@ -332,7 +339,10 @@ class AnthemDevice(PersistentConnectionDevice):
                         video_resolution = resolution_match.group(1).strip()
                         state["video_resolution"] = video_resolution
                         sensor_id = f"sensor.{self.identifier}_video_resolution"
-                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {
+                            SensorAttributes.STATE.value: SensorStates.ON.value,
+                            SensorAttributes.VALUE.value: video_resolution
+                        })
 
                 elif "ALM" in response and "?" not in response:
                     # Audio Listening Mode (e.g., Z1ALM3 = Dolby Surround)
@@ -342,7 +352,10 @@ class AnthemDevice(PersistentConnectionDevice):
                         listening_mode = self._get_listening_mode_name(mode_num)
                         state["listening_mode"] = listening_mode
                         sensor_id = f"sensor.{self.identifier}_listening_mode"
-                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+                        self.events.emit(DeviceEvents.UPDATE, sensor_id, {
+                            SensorAttributes.STATE.value: SensorStates.ON.value,
+                            SensorAttributes.VALUE.value: listening_mode
+                        })
 
                 elif "AIR" in response or "SRT" in response or "BDP" in response:
                     # Audio Input Rate/Sample Rate/Bit Depth
@@ -363,7 +376,12 @@ class AnthemDevice(PersistentConnectionDevice):
                             state["sample_rate"] = f"{current_rate} / {depth_match.group(1)}-bit".strip(" /")
 
                     sensor_id = f"sensor.{self.identifier}_sample_rate"
-                    self.events.emit(DeviceEvents.UPDATE, sensor_id, {})
+                    from ucapi.sensor import Attributes as SensorAttributes, States as SensorStates
+                    sample_rate_value = state.get("sample_rate", "Unknown")
+                    self.events.emit(DeviceEvents.UPDATE, sensor_id, {
+                        SensorAttributes.STATE.value: SensorStates.ON.value,
+                        SensorAttributes.VALUE.value: sample_rate_value
+                    })
 
     def _get_entity_id_for_zone(self, zone_num: int) -> str | None:
         """Get entity ID for a zone number."""
