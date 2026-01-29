@@ -1,6 +1,6 @@
 {
   "driver_id": "anthemav",
-  "version": "1.4.13",
+  "version": "1.4.14",
   "min_core_api": "0.22.0",
   "name": {
     "en": "Anthem A/V Receivers"

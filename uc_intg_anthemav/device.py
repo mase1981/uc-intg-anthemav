@@ -165,12 +165,12 @@ class AnthemDevice(PersistentConnectionDevice):
 
         elif (
             response.startswith(const.RESP_INPUT_SETTING)
-            and const.RESP_INPUT in response
+            and const.RESP_INPUT_NAME in response
             and len(response) > 5
         ):
             # Handle ISiINyyyy format for custom input names (i=01-30, yyyy=16 char name)
             input_match = re.match(
-                rf"{const.RESP_INPUT_SETTING}(\d{{1,2}}){const.RESP_INPUT}(.+)",
+                rf"{const.RESP_INPUT_SETTING}(\d{{1,2}}){const.RESP_INPUT_NAME}(.+)",
                 response,
             )
             if input_match:
@@ -408,8 +408,8 @@ class AnthemDevice(PersistentConnectionDevice):
     async def _discover_input_names(self) -> None:
         """Query custom/virtual input names from receiver (supports up to 30 inputs)."""
         for input_num in range(1, self._input_count + 1):
-            # Use ISiIN? format to query custom input name (i=01-30)
-            await self._send_command(f"{const.CMD_INPUT_SETTING_PREFIX}{input_num}{const.CMD_INPUT_NAME_QUERY_SUFFIX}")
+            # Use ISiIN? format to query custom input name (i=01-30, zero-padded)
+            await self._send_command(f"{const.CMD_INPUT_SETTING_PREFIX}{input_num:02d}{const.CMD_INPUT_NAME_QUERY_SUFFIX}")
             await asyncio.sleep(0.05)
 
     async def power_on(self, zone: int = 1) -> bool:
@@ -450,7 +450,7 @@ class AnthemDevice(PersistentConnectionDevice):
     async def set_arc(self, enabled: bool, input_num: int = 1) -> bool:
         """Enable/disable Anthem Room Correction for input."""
         return await self._send_command(
-            f"{const.CMD_INPUT_SETTING_PREFIX}{input_num}{const.CMD_ARC_SETTING_SUFFIX}{const.VAL_ON if enabled else const.VAL_OFF}"
+            f"{const.CMD_INPUT_SETTING_PREFIX}{input_num:02d}{const.CMD_ARC_SETTING_SUFFIX}{const.VAL_ON if enabled else const.VAL_OFF}"
         )
 
     async def set_front_panel_brightness(self, brightness: int) -> bool:
