@@ -16,7 +16,7 @@ from uc_intg_anthemav.driver import AnthemDriver
 from uc_intg_anthemav.setup_flow import AnthemSetupFlow
 from uc_intg_anthemav.config import AnthemDeviceConfig
 
-__version__ = "1.4.15"
+__version__ = "1.4.16"
 
 _LOG = logging.getLogger(__name__)
 

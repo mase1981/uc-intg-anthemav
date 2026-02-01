@@ -214,7 +214,6 @@ class AnthemDevice(PersistentConnectionDevice):
                     power = const.VAL_ON in response
                     state["power"] = power
                     new_state = "ON" if power else "OFF"
-                    self._state = new_state
 
                     if entity_id:
                         self.events.emit(
