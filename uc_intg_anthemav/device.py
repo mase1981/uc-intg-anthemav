@@ -30,6 +30,7 @@ class AnthemDevice(PersistentConnectionDevice):
         self._zone_states: dict[int, dict[str, Any]] = {}
         self._input_names: dict[int, str] = {}
         self._input_count: int = 0
+        self._model: str | None = None
 
         self._last_volume_update: dict[int, tuple[int, float]] = {}
         self._volume_debounce_ms = 100
@@ -70,6 +71,8 @@ class AnthemDevice(PersistentConnectionDevice):
         await self._send_command(const.CMD_ECHO_OFF)
         await asyncio.sleep(0.1)
         await self._send_command(const.CMD_STANDBY_IP_CONTROL_ON)
+        await asyncio.sleep(0.1)
+        await self._send_command(const.CMD_MODEL_QUERY)
         await asyncio.sleep(0.1)
         await self._send_command(const.CMD_INPUT_COUNT_QUERY)
         await asyncio.sleep(0.2)
@@ -153,8 +156,8 @@ class AnthemDevice(PersistentConnectionDevice):
         """Update device state from response."""
         if response.startswith(const.RESP_MODEL):
             model = response[3:].strip()
-            self._state = {"model": model}
-            _LOG.info("[%s] Model: %s", self.log_id, model)
+            self._model = model
+            _LOG.info("[%s] Model detected: %s", self.log_id, model)
 
         elif response.startswith(const.RESP_INPUT_COUNT):
             count_match = re.match(rf"{const.RESP_INPUT_COUNT}(\d+)", response)
@@ -404,6 +407,20 @@ class AnthemDevice(PersistentConnectionDevice):
         """Convert listening mode number to friendly name."""
         return const.LISTENING_MODES.get(mode_num, f"Mode {mode_num}")
 
+    def _requires_volume_suffix(self) -> bool:
+        """
+        Determine if this model requires '01' suffix for volume up/down commands.
+
+        MRX-series models (MRX 520, 720, 540, 740, 1140) require Z1VUP01/Z1VDN01 format.
+        AVM-series and other models use Z1VUP/Z1VDN format.
+        """
+        if not self._model:
+            return False
+
+        model_upper = self._model.upper()
+        # Check if model contains "MRX" (e.g., "MRX 720", "MRX720", "MRX-720")
+        return "MRX" in model_upper
+
     async def _discover_input_names(self) -> None:
         """Query custom/virtual input names from receiver (supports up to 30 inputs)."""
         for input_num in range(1, self._input_count + 1):
@@ -426,11 +443,13 @@ class AnthemDevice(PersistentConnectionDevice):
 
     async def volume_up(self, zone: int = 1) -> bool:
         """Increase volume by 1dB."""
-        return await self._send_command(f"{const.CMD_ZONE_PREFIX}{zone}{const.CMD_VOLUME_UP}")
+        suffix = "01" if self._requires_volume_suffix() else ""
+        return await self._send_command(f"{const.CMD_ZONE_PREFIX}{zone}{const.CMD_VOLUME_UP}{suffix}")
 
     async def volume_down(self, zone: int = 1) -> bool:
         """Decrease volume by 1dB."""
-        return await self._send_command(f"{const.CMD_ZONE_PREFIX}{zone}{const.CMD_VOLUME_DOWN}")
+        suffix = "01" if self._requires_volume_suffix() else ""
+        return await self._send_command(f"{const.CMD_ZONE_PREFIX}{zone}{const.CMD_VOLUME_DOWN}{suffix}")
 
     async def set_mute(self, muted: bool, zone: int = 1) -> bool:
         """Set mute state."""

@@ -7,6 +7,7 @@ CMD_ZONE_PREFIX = "Z"
 # Global System Commands
 CMD_ECHO_OFF = "ECH0"
 CMD_STANDBY_IP_CONTROL_ON = "SIP1"
+CMD_MODEL_QUERY = "IDM?"
 CMD_INPUT_COUNT_QUERY = "ICN?"
 
 # Global Control Commands (GC prefix)
