@@ -21,7 +21,9 @@ from uc_intg_anthemav.sensor import (
     AnthemVideoResolutionSensor,
     AnthemListeningModeSensor,
     AnthemSampleRateSensor,
+    AnthemModelSensor,
 )
+from uc_intg_anthemav.select import AnthemListeningModeSelect
 
 _LOG = logging.getLogger(__name__)
 
@@ -97,6 +99,20 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
                 entities.append(sample_rate_sensor)
                 _LOG.info("Created sensor: %s for sample rate", sample_rate_sensor.id)
 
+                # Model sensor (device-level, not zone-specific)
+                model_sensor = AnthemModelSensor(device_config, device)
+                entities.append(model_sensor)
+                _LOG.info("Created sensor: %s for model info", model_sensor.id)
+
+            # Create select entity for listening mode (per zone)
+            listening_mode_select = AnthemListeningModeSelect(device_config, device, zone_config)
+            entities.append(listening_mode_select)
+            _LOG.info(
+                "Created select: %s for Zone %d listening mode",
+                listening_mode_select.id,
+                zone_config.zone_number,
+            )
+
         return entities
 
     async def refresh_entity_state(self, entity_id: str) -> None:
@@ -164,6 +180,7 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
             if zone.zone_number == 1:
                 entity_ids.append(f"media_player.{device_id}")
                 entity_ids.append(f"remote.{device_id}")
+                entity_ids.append(f"select.{device_id}_listening_mode")
                 # Add sensor entity IDs (only for Zone 1)
                 entity_ids.append(f"sensor.{device_id}_volume")
                 entity_ids.append(f"sensor.{device_id}_audio_format")
@@ -171,8 +188,10 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
                 entity_ids.append(f"sensor.{device_id}_video_resolution")
                 entity_ids.append(f"sensor.{device_id}_listening_mode")
                 entity_ids.append(f"sensor.{device_id}_sample_rate")
+                entity_ids.append(f"sensor.{device_id}_model")
             else:
                 entity_ids.append(f"media_player.{device_id}.zone{zone.zone_number}")
                 entity_ids.append(f"remote.{device_id}.zone{zone.zone_number}")
+                entity_ids.append(f"select.{device_id}.zone{zone.zone_number}_listening_mode")
 
         return entity_ids

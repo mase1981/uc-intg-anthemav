@@ -90,3 +90,13 @@ artifacts/
 # Ai Tools
 Claude/
 .claude/
+tmpclaude-*
+nul
+
+# Testing files (keep local only, never push to repository)
+tests/
+simulator/
+
+# Knowledge base (local only)
+knowledge-base/
+*.knowledge.md

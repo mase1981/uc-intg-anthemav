@@ -655,10 +655,10 @@ class AnthemRemote(Remote):
             elif command == "INFO":
                 success = await self._device.set_osd_info(1)
             elif command == "ARC_ON":
-                input_num = self._device.get_zone_state(zone).get("input", 1)
+                input_num = self._device.get_zone_state(zone).input_number
                 success = await self._device.set_arc(True, input_num)
             elif command == "ARC_OFF":
-                input_num = self._device.get_zone_state(zone).get("input", 1)
+                input_num = self._device.get_zone_state(zone).input_number
                 success = await self._device.set_arc(False, input_num)
             elif command == "BRIGHTNESS_UP":
                 success = await self._device._send_command("GCFPB?")

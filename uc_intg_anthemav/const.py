@@ -1,7 +1,7 @@
 """Constants for Anthem A/V Receiver integration."""
 
 # General formatting
-CMD_TERMINATOR = ";"
+CMD_TERMINATOR = ";"  # Anthem protocol uses semicolon for both commands and responses
 CMD_ZONE_PREFIX = "Z"
 
 # Global System Commands
@@ -24,6 +24,11 @@ CMD_OSD_INFO = "GCOSID"  # + 0 (Off) / 1 (16:9) / 2 (2.4:1)
 CMD_INPUT_SETTING_PREFIX = "IS"
 CMD_INPUT_NAME_QUERY_SUFFIX = "IN?"
 CMD_ARC_SETTING_SUFFIX = "ARC"
+
+# Input Name Query Commands - model-specific formats
+# MRX x20 series (720, 520, 1120) and AVM 60 use ISN/ILN format
+CMD_INPUT_SHORT_NAME_PREFIX = "ISN"  # ISNyy? format (yy=01-30, zero-padded)
+CMD_INPUT_LONG_NAME_PREFIX = "ILN"   # ILNyy? format (yy=01-30, zero-padded)
 
 # Zone Commands (Z prefix) - these usually follow Z{zone}
 CMD_POWER = "POW"
@@ -64,6 +69,8 @@ RESP_VOLUME = "VOL"
 RESP_MUTE = "MUT"
 RESP_INPUT = "INP"
 RESP_INPUT_NAME = "IN"  # For input name responses (IS01INname), different from RESP_INPUT
+RESP_INPUT_SHORT_NAME = "ISN"  # For ISNyyname responses (MRX x20/AVM 60)
+RESP_INPUT_LONG_NAME = "ILN"   # For ILNyyname responses (MRX x20/AVM 60)
 RESP_AUDIO_FORMAT = "AIF"
 RESP_AUDIO_CHANNELS = "AIC"
 RESP_VIDEO_RESOLUTION = "VIR"

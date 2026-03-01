@@ -6,8 +6,10 @@ Anthem A/V Receivers Integration for Unfolded Circle Remote Two/3.
 """
 
 import asyncio
+import json
 import logging
 import os
+from pathlib import Path
 
 from ucapi import DeviceStates
 from ucapi_framework import get_config_path, BaseConfigManager
@@ -16,7 +18,12 @@ from uc_intg_anthemav.driver import AnthemDriver
 from uc_intg_anthemav.setup_flow import AnthemSetupFlow
 from uc_intg_anthemav.config import AnthemDeviceConfig
 
-__version__ = "1.4.16"
+try:
+    _driver_path = Path(__file__).parent.parent / "driver.json"
+    with open(_driver_path, "r", encoding="utf-8") as f:
+        __version__ = json.load(f).get("version", "0.0.0")
+except (FileNotFoundError, json.JSONDecodeError):
+    __version__ = "0.0.0"
 
 _LOG = logging.getLogger(__name__)
 
@@ -64,13 +71,7 @@ async def main():
             _LOG.info("No devices configured, waiting for setup")
             await driver.api.set_device_state(DeviceStates.DISCONNECTED)
 
-        _LOG.info("=" * 70)
-        _LOG.info("✅ Anthem integration started successfully")
-        _LOG.info("=" * 70)
-        _LOG.info("Integration is running and listening on port 9090")
-        _LOG.info("Ready to connect simulator or configure devices")
-        _LOG.info("Press Ctrl+C to stop")
-        _LOG.info("=" * 70)
+        _LOG.info("Integration started successfully")
 
         # Keep running indefinitely
         await asyncio.Future()
