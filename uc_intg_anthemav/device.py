@@ -101,8 +101,38 @@ class AnthemDevice(PersistentConnectionDevice):
                 )
                 await asyncio.sleep(0.05)
 
+        await self._read_initial_responses(timeout=2.0)
         _LOG.info("[%s] Connection established and initialized", self.log_id)
         return (self._reader, self._writer)
+
+    async def _read_initial_responses(self, timeout: float = 2.0) -> None:
+        """Read and process initial responses to bootstrap device state."""
+        if not self._reader:
+            return
+
+        buffer = ""
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+
+        while loop.time() < deadline:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                data = await asyncio.wait_for(
+                    self._reader.read(1024),
+                    timeout=min(remaining, 0.5),
+                )
+                if not data:
+                    break
+                buffer += data.decode("ascii", errors="ignore")
+                while const.CMD_TERMINATOR in buffer:
+                    line, buffer = buffer.split(const.CMD_TERMINATOR, 1)
+                    line = line.strip()
+                    if line:
+                        await self._process_response(line)
+            except asyncio.TimeoutError:
+                break
 
     async def close_connection(self) -> None:
         """Close TCP connection."""

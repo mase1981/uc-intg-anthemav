@@ -7,7 +7,7 @@ Anthem A/V integration driver for Unfolded Circle Remote.
 
 import logging
 
-from ucapi import Entity, EntityTypes, media_player
+from ucapi import Entity, EntityTypes, media_player, remote, sensor, select
 from ucapi_framework import BaseIntegrationDriver
 
 from uc_intg_anthemav.config import AnthemDeviceConfig
@@ -115,10 +115,38 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
 
         return entities
 
+    def device_from_entity_id(self, entity_id: str) -> str | None:
+        """Extract device identifier, handling underscore-suffixed sensor/select IDs."""
+        if not entity_id or "." not in entity_id:
+            return None
+
+        parts = entity_id.split(".")
+        if len(parts) >= 3:
+            return parts[1]
+
+        candidate = parts[1]
+        if candidate in self._device_instances:
+            return candidate
+
+        for device_id in self._device_instances:
+            if candidate.startswith(device_id + "_"):
+                return device_id
+
+        return candidate
+
+    def _zone_from_entity_id(self, entity_id: str) -> int:
+        """Extract zone number from entity ID."""
+        parts = entity_id.split(".")
+        if len(parts) == 3 and parts[2].startswith("zone"):
+            try:
+                zone_part = parts[2].split("_")[0]
+                return int(zone_part.replace("zone", ""))
+            except ValueError:
+                pass
+        return 1
+
     async def refresh_entity_state(self, entity_id: str) -> None:
-        """
-        Refresh entity state by querying device and updating SOURCE_LIST.
-        """
+        """Refresh entity state from current device data and query for updates."""
         _LOG.info("[%s] Refreshing entity state", entity_id)
 
         device_id = self.device_from_entity_id(entity_id)
@@ -141,27 +169,56 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
             await super().refresh_entity_state(entity_id)
             return
 
+        zone_num = self._zone_from_entity_id(entity_id)
+        zone_state = device.get_zone_state(zone_num)
+        state_str = "ON" if zone_state.power else "OFF"
+        volume_pct = max(0, min(100, int(((zone_state.volume_db + 90) / 90) * 100)))
+
         if configured_entity.entity_type == EntityTypes.MEDIA_PLAYER:
             source_list = device.get_input_list()
+            attrs = {
+                media_player.Attributes.STATE: media_player.States.ON if zone_state.power else media_player.States.OFF,
+                media_player.Attributes.VOLUME: volume_pct,
+                media_player.Attributes.MUTED: zone_state.muted,
+            }
             if source_list:
-                self.api.configured_entities.update_attributes(
-                    entity_id, {media_player.Attributes.SOURCE_LIST: source_list}
-                )
-                _LOG.info(
-                    "[%s] Updated SOURCE_LIST with %d sources", entity_id, len(source_list)
-                )
+                attrs[media_player.Attributes.SOURCE_LIST] = source_list
+            if zone_state.input_name != "Unknown":
+                attrs[media_player.Attributes.SOURCE] = zone_state.input_name
+            self.api.configured_entities.update_attributes(entity_id, attrs)
 
-        parts = entity_id.split(".")
-        if len(parts) == 2:
-            zone_num = 1
-        elif len(parts) == 3 and parts[2].startswith("zone"):
-            try:
-                zone_num = int(parts[2].replace("zone", ""))
-            except ValueError:
-                _LOG.error("[%s] Invalid zone format: %s", entity_id, parts[2])
-                return
-        else:
-            zone_num = 1
+        elif configured_entity.entity_type == EntityTypes.REMOTE:
+            self.api.configured_entities.update_attributes(
+                entity_id,
+                {remote.Attributes.STATE: remote.States.ON if zone_state.power else remote.States.OFF},
+            )
+
+        elif configured_entity.entity_type == EntityTypes.SENSOR:
+            sensor_attrs = {sensor.Attributes.STATE: sensor.States.ON}
+            if "_volume" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = str(zone_state.volume_db)
+            elif "_audio_format" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = zone_state.audio_format
+            elif "_audio_channels" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = zone_state.audio_channels
+            elif "_video_resolution" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = zone_state.video_resolution
+            elif "_listening_mode" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = zone_state.listening_mode
+            elif "_sample_rate" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = zone_state.sample_rate
+            elif "_model" in entity_id:
+                sensor_attrs[sensor.Attributes.VALUE] = device._model or "Unknown"
+            self.api.configured_entities.update_attributes(entity_id, sensor_attrs)
+
+        elif configured_entity.entity_type == EntityTypes.SELECT:
+            self.api.configured_entities.update_attributes(
+                entity_id,
+                {
+                    select.Attributes.STATE: select.States.ON if zone_state.power else select.States.OFF,
+                    select.Attributes.CURRENT_OPTION: zone_state.listening_mode,
+                },
+            )
 
         _LOG.info("[%s] Querying device status for Zone %d", entity_id, zone_num)
         await device.query_status(zone_num)

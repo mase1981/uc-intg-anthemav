@@ -31,7 +31,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "ucapi-framework>=1.8.4",
+    "ucapi-framework>=1.9.1",
     "ucapi>=0.5.2",
 ]
 dynamic = ["version"]

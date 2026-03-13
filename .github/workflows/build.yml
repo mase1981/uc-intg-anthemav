@@ -56,6 +56,7 @@ jobs:
                 --hidden-import uc_intg_${INTG_NAME}.remote \
                 --hidden-import uc_intg_${INTG_NAME}.sensor \
                 --hidden-import uc_intg_${INTG_NAME}.setup_flow \
+                --hidden-import uc_intg_${INTG_NAME}.select \
                 --paths . \
                 uc_intg_${INTG_NAME}/__init__.py"
 
