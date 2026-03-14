@@ -85,7 +85,7 @@ class AnthemDevice(PersistentConnectionDevice):
             self._device_config.host, self._device_config.port
         )
 
-        await self._send_command(const.CMD_ECHO_OFF)
+        await self._send_command(const.CMD_ECHO_ON)
         await asyncio.sleep(0.1)
         await self._send_command(const.CMD_STANDBY_IP_CONTROL_ON)
         await asyncio.sleep(0.1)
