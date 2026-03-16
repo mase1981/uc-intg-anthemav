@@ -89,7 +89,7 @@ VAL_ON = "1"
 VAL_OFF = "0"
 VAL_TOGGLE = "t"
 
-# Audio Listening Modes
+# Audio Listening Modes - x40 series (MRX 540/740/1140, AVM 70/90) and default
 LISTENING_MODES = {
     0: "None",
     1: "AnthemLogic Cinema",
@@ -108,6 +108,39 @@ LISTENING_MODES = {
     14: "PCM Stereo",
     15: "Direct",
 }
+
+# Audio Listening Modes - x20 series (MRX 520/720/1120, AVM 60)
+LISTENING_MODES_X20 = {
+    0: "None",
+    1: "AnthemLogic Cinema",
+    2: "AnthemLogic Music",
+    3: "PLII Movie",
+    4: "PLII Music",
+    5: "Neo:6 Cinema",
+    6: "Neo:6 Music",
+    7: "All Channel Stereo",
+    8: "All Channel Mono",
+    9: "Mono",
+    10: "Mono-Academy",
+    11: "Mono (L)",
+    12: "Mono (R)",
+    13: "High Blend",
+    14: "Dolby Surround",
+}
+
+# x20 Front Panel Brightness (uses FPB command, not GCFPB)
+CMD_FRONT_PANEL_BRIGHTNESS_X20 = "FPB"
+
+# x20 ARC command (global Z1ARC, not per-input ISxARC)
+CMD_ARC_X20 = "Z1ARC"
+
+# Speaker channel mapping - x20 series
+SPEAKER_CH_X20_SUBS = 0
+SPEAKER_CH_X20_FRONTS = 1
+SPEAKER_CH_X20_CENTER = 2
+SPEAKER_CH_X20_SURROUNDS = 3
+SPEAKER_CH_X20_BACKS = 4
+SPEAKER_CH_X20_HEIGHTS = 6
 
 # Default Input Map (Fallback)
 DEFAULT_INPUT_MAP = {

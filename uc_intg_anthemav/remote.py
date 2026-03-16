@@ -13,30 +13,61 @@ from ucapi import StatusCodes
 from ucapi.remote import Commands, Features, Options, Remote
 
 from .config import AnthemDeviceConfig, ZoneConfig
+from . import const
 from .device import AnthemDevice
 
 _LOG = logging.getLogger(__name__)
 
 
+_ALM_X40 = {
+    "DOLBY_SURROUND": 3,
+    "DTS_NEURAL_X": 4,
+    "ANTHEMLOGIC_CINEMA": 1,
+    "ANTHEMLOGIC_MUSIC": 2,
+    "STEREO": 5,
+    "MULTI_CHANNEL_STEREO": 6,
+    "ALL_CHANNEL_STEREO": 7,
+    "PLIIX_MOVIE": 8,
+    "PLIIX_MUSIC": 9,
+    "NEO6_CINEMA": 10,
+    "NEO6_MUSIC": 11,
+    "DOLBY_DIGITAL": 12,
+    "DTS": 13,
+    "PCM_STEREO": 14,
+    "DIRECT": 15,
+}
+
+_ALM_X20 = {
+    "DOLBY_SURROUND": 14,
+    "ANTHEMLOGIC_CINEMA": 1,
+    "ANTHEMLOGIC_MUSIC": 2,
+    "ALL_CHANNEL_STEREO": 7,
+    "PLIIX_MOVIE": 3,
+    "PLIIX_MUSIC": 4,
+    "NEO6_CINEMA": 5,
+    "NEO6_MUSIC": 6,
+}
+
+_SPEAKER_CH_X20 = {
+    "LEVEL_SUBWOOFER": const.SPEAKER_CH_X20_SUBS,
+    "LEVEL_FRONTS": const.SPEAKER_CH_X20_FRONTS,
+    "LEVEL_CENTER": const.SPEAKER_CH_X20_CENTER,
+    "LEVEL_SURROUNDS": const.SPEAKER_CH_X20_SURROUNDS,
+    "LEVEL_BACKS": const.SPEAKER_CH_X20_BACKS,
+    "LEVEL_HEIGHTS": const.SPEAKER_CH_X20_HEIGHTS,
+}
+
+_SPEAKER_CH_X40 = {
+    "LEVEL_SUBWOOFER": 1,
+    "LEVEL_FRONTS": 5,
+    "LEVEL_CENTER": 7,
+    "LEVEL_SURROUNDS": 8,
+    "LEVEL_BACKS": 9,
+    "LEVEL_HEIGHTS": 10,
+}
+
+
 class AnthemRemote(Remote):
-    LISTENING_MODES = {
-        "None": 0,
-        "AnthemLogic Cinema": 1,
-        "AnthemLogic Music": 2,
-        "Dolby Surround": 3,
-        "DTS Neural:X": 4,
-        "Stereo": 5,
-        "Multi-Channel Stereo": 6,
-        "All-Channel Stereo": 7,
-        "PLIIx Movie": 8,
-        "PLIIx Music": 9,
-        "Neo:6 Cinema": 10,
-        "Neo:6 Music": 11,
-        "Dolby Digital": 12,
-        "DTS": 13,
-        "PCM Stereo": 14,
-        "Direct": 15,
-    }
 
     def __init__(
         self,
@@ -577,6 +608,11 @@ class AnthemRemote(Remote):
     ) -> None:
         pass
 
+    def _get_alm_command(self, zone: int, mode_num: int) -> str:
+        if self._device.is_x20_series:
+            return f"Z{zone}ALM{mode_num:02d}"
+        return f"Z{zone}ALM{mode_num}"
+
     async def handle_command(
         self, entity: Remote, cmd_id: str, params: dict[str, Any] | None
     ) -> StatusCodes:
@@ -584,6 +620,7 @@ class AnthemRemote(Remote):
 
         try:
             zone = self._zone_config.zone_number
+            is_x20 = self._device.is_x20_series
 
             if cmd_id != Commands.SEND_CMD:
                 _LOG.warning("[%s] Unsupported command type: %s", self.id, cmd_id)
@@ -596,40 +633,22 @@ class AnthemRemote(Remote):
             command = params["command"]
             success = False
 
-            if command == "DOLBY_SURROUND":
-                success = await self._device._send_command(f"Z{zone}ALM3")
-            elif command == "DTS_NEURAL_X":
-                success = await self._device._send_command(f"Z{zone}ALM4")
-            elif command == "ANTHEMLOGIC_CINEMA":
-                success = await self._device._send_command(f"Z{zone}ALM1")
-            elif command == "ANTHEMLOGIC_MUSIC":
-                success = await self._device._send_command(f"Z{zone}ALM2")
-            elif command == "STEREO":
-                success = await self._device._send_command(f"Z{zone}ALM5")
-            elif command == "MULTI_CHANNEL_STEREO":
-                success = await self._device._send_command(f"Z{zone}ALM6")
-            elif command == "ALL_CHANNEL_STEREO":
-                success = await self._device._send_command(f"Z{zone}ALM7")
-            elif command == "PLIIX_MOVIE":
-                success = await self._device._send_command(f"Z{zone}ALM8")
-            elif command == "PLIIX_MUSIC":
-                success = await self._device._send_command(f"Z{zone}ALM9")
-            elif command == "NEO6_CINEMA":
-                success = await self._device._send_command(f"Z{zone}ALM10")
-            elif command == "NEO6_MUSIC":
-                success = await self._device._send_command(f"Z{zone}ALM11")
-            elif command == "DOLBY_DIGITAL":
-                success = await self._device._send_command(f"Z{zone}ALM12")
-            elif command == "DTS":
-                success = await self._device._send_command(f"Z{zone}ALM13")
-            elif command == "PCM_STEREO":
-                success = await self._device._send_command(f"Z{zone}ALM14")
-            elif command == "DIRECT":
-                success = await self._device._send_command(f"Z{zone}ALM15")
+            alm_map = _ALM_X20 if is_x20 else _ALM_X40
+            alm_num = alm_map.get(command)
+            if alm_num is not None:
+                success = await self._device._send_command(
+                    self._get_alm_command(zone, alm_num)
+                )
             elif command == "AUDIO_MODE_UP":
-                success = await self._device._send_command(f"Z{zone}AUP")
+                if is_x20:
+                    success = await self._device._send_command(f"Z{zone}ALMna")
+                else:
+                    success = await self._device._send_command(f"Z{zone}AUP")
             elif command == "AUDIO_MODE_DOWN":
-                success = await self._device._send_command(f"Z{zone}ADN")
+                if is_x20:
+                    success = await self._device._send_command(f"Z{zone}ALMpa")
+                else:
+                    success = await self._device._send_command(f"Z{zone}ADN")
             elif command == "BASS_UP":
                 success = await self._device._send_command(f"Z{zone}TUP0")
             elif command == "BASS_DOWN":
@@ -661,13 +680,15 @@ class AnthemRemote(Remote):
                 input_num = self._device.get_zone_state(zone).input_number
                 success = await self._device.set_arc(False, input_num)
             elif command == "BRIGHTNESS_UP":
-                success = await self._device._send_command("GCFPB?")
-                await asyncio.sleep(0.1)
-                success = await self._device.set_front_panel_brightness(50)
+                if is_x20:
+                    success = await self._device.set_front_panel_brightness(3)
+                else:
+                    success = await self._device.set_front_panel_brightness(50)
             elif command == "BRIGHTNESS_DOWN":
-                success = await self._device._send_command("GCFPB?")
-                await asyncio.sleep(0.1)
-                success = await self._device.set_front_panel_brightness(20)
+                if is_x20:
+                    success = await self._device.set_front_panel_brightness(1)
+                else:
+                    success = await self._device.set_front_panel_brightness(20)
             elif command == "DISPLAY_ALL":
                 success = await self._device.set_front_panel_display(0)
             elif command == "DISPLAY_VOLUME_ONLY":
@@ -680,30 +701,19 @@ class AnthemRemote(Remote):
                 success = await self._device.set_cec_control(True)
             elif command == "CEC_OFF":
                 success = await self._device.set_cec_control(False)
-            elif command == "LEVEL_SUBWOOFER_UP":
-                success = await self._device.speaker_level_up(1, zone)
-            elif command == "LEVEL_SUBWOOFER_DOWN":
-                success = await self._device.speaker_level_down(1, zone)
-            elif command == "LEVEL_FRONTS_UP":
-                success = await self._device.speaker_level_up(5, zone)
-            elif command == "LEVEL_FRONTS_DOWN":
-                success = await self._device.speaker_level_down(5, zone)
-            elif command == "LEVEL_CENTER_UP":
-                success = await self._device.speaker_level_up(7, zone)
-            elif command == "LEVEL_CENTER_DOWN":
-                success = await self._device.speaker_level_down(7, zone)
-            elif command == "LEVEL_SURROUNDS_UP":
-                success = await self._device.speaker_level_up(8, zone)
-            elif command == "LEVEL_SURROUNDS_DOWN":
-                success = await self._device.speaker_level_down(8, zone)
-            elif command == "LEVEL_BACKS_UP":
-                success = await self._device.speaker_level_up(9, zone)
-            elif command == "LEVEL_BACKS_DOWN":
-                success = await self._device.speaker_level_down(9, zone)
-            elif command == "LEVEL_HEIGHTS_UP":
-                success = await self._device.speaker_level_up(10, zone)
-            elif command == "LEVEL_HEIGHTS_DOWN":
-                success = await self._device.speaker_level_down(10, zone)
+            elif command.startswith("LEVEL_") and command.endswith(("_UP", "_DOWN")):
+                is_up = command.endswith("_UP")
+                base = command.rsplit("_", 1)[0]
+                ch_map = _SPEAKER_CH_X20 if is_x20 else _SPEAKER_CH_X40
+                channel = ch_map.get(base)
+                if channel is not None:
+                    if is_up:
+                        success = await self._device.speaker_level_up(channel, zone)
+                    else:
+                        success = await self._device.speaker_level_down(channel, zone)
+                else:
+                    _LOG.warning("[%s] Unknown speaker channel: %s", self.id, base)
+                    return StatusCodes.NOT_FOUND
             else:
                 _LOG.warning("[%s] Unknown audio command: %s", self.id, command)
                 return StatusCodes.NOT_FOUND

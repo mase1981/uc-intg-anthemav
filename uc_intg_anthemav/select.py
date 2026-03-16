@@ -12,6 +12,7 @@ from ucapi import StatusCodes
 from ucapi.select import Attributes, Commands, Select, States
 
 from .config import AnthemDeviceConfig, ZoneConfig
+from . import const
 from .device import AnthemDevice
 
 _LOG = logging.getLogger(__name__)
@@ -34,6 +35,18 @@ LISTENING_MODES = {
     "DTS": 13,
     "PCM Stereo": 14,
     "Direct": 15,
+}
+
+LISTENING_MODES_X20 = {
+    "None": 0,
+    "AnthemLogic Cinema": 1,
+    "AnthemLogic Music": 2,
+    "Dolby Surround": 14,
+    "All-Channel Stereo": 7,
+    "PLIIx Movie": 3,
+    "PLIIx Music": 4,
+    "Neo:6 Cinema": 5,
+    "Neo:6 Music": 6,
 }
 
 LISTENING_MODE_NAMES = {v: k for k, v in LISTENING_MODES.items()}
@@ -98,6 +111,14 @@ class AnthemListeningModeSelect(Select):
             self.attributes[Attributes.CURRENT_OPTION] = mode_name
             _LOG.debug("[%s] Listening mode updated to %s", self.id, mode_name)
 
+    def _get_alm_command(self, zone: int, mode_num: int) -> str:
+        if self._device.is_x20_series:
+            return f"Z{zone}ALM{mode_num:02d}"
+        return f"Z{zone}ALM{mode_num}"
+
+    def _get_mode_map(self) -> dict[str, int]:
+        return LISTENING_MODES_X20 if self._device.is_x20_series else LISTENING_MODES
+
     async def handle_command(
         self, entity: Select, cmd_id: str, params: dict[str, Any] | None
     ) -> StatusCodes:
@@ -106,6 +127,8 @@ class AnthemListeningModeSelect(Select):
 
         try:
             zone = self._zone_config.zone_number
+            is_x20 = self._device.is_x20_series
+            mode_map = self._get_mode_map()
             current_mode = self.attributes.get(Attributes.CURRENT_OPTION, "")
             options = self.attributes.get(Attributes.OPTIONS, [])
 
@@ -115,12 +138,16 @@ class AnthemListeningModeSelect(Select):
                     return StatusCodes.BAD_REQUEST
 
                 option = params["option"]
-                if option not in LISTENING_MODES:
-                    _LOG.error("[%s] Invalid listening mode: %s", self.id, option)
+                mode_num = mode_map.get(option)
+                if mode_num is None:
+                    mode_num = LISTENING_MODES.get(option)
+                if mode_num is None:
+                    _LOG.warning("[%s] Mode not available: %s", self.id, option)
                     return StatusCodes.BAD_REQUEST
 
-                mode_num = LISTENING_MODES[option]
-                success = await self._device._send_command(f"Z{zone}ALM{mode_num}")
+                success = await self._device._send_command(
+                    self._get_alm_command(zone, mode_num)
+                )
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.SELECT_NEXT:
@@ -129,12 +156,18 @@ class AnthemListeningModeSelect(Select):
                         current_idx = options.index(current_mode)
                         next_idx = (current_idx + 1) % len(options)
                         next_mode = options[next_idx]
-                        mode_num = LISTENING_MODES[next_mode]
-                        success = await self._device._send_command(f"Z{zone}ALM{mode_num}")
-                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+                        mode_num = mode_map.get(next_mode)
+                        if mode_num is not None:
+                            success = await self._device._send_command(
+                                self._get_alm_command(zone, mode_num)
+                            )
+                            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                     except ValueError:
                         pass
-                success = await self._device._send_command(f"Z{zone}AUP")
+                if is_x20:
+                    success = await self._device._send_command(f"Z{zone}ALMna")
+                else:
+                    success = await self._device._send_command(f"Z{zone}AUP")
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.SELECT_PREVIOUS:
@@ -143,24 +176,36 @@ class AnthemListeningModeSelect(Select):
                         current_idx = options.index(current_mode)
                         prev_idx = (current_idx - 1) % len(options)
                         prev_mode = options[prev_idx]
-                        mode_num = LISTENING_MODES[prev_mode]
-                        success = await self._device._send_command(f"Z{zone}ALM{mode_num}")
-                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+                        mode_num = mode_map.get(prev_mode)
+                        if mode_num is not None:
+                            success = await self._device._send_command(
+                                self._get_alm_command(zone, mode_num)
+                            )
+                            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                     except ValueError:
                         pass
-                success = await self._device._send_command(f"Z{zone}ADN")
+                if is_x20:
+                    success = await self._device._send_command(f"Z{zone}ALMpa")
+                else:
+                    success = await self._device._send_command(f"Z{zone}ADN")
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.SELECT_FIRST:
                 first_mode = options[0] if options else "None"
-                mode_num = LISTENING_MODES.get(first_mode, 0)
-                success = await self._device._send_command(f"Z{zone}ALM{mode_num}")
+                mode_num = mode_map.get(first_mode, 0)
+                success = await self._device._send_command(
+                    self._get_alm_command(zone, mode_num)
+                )
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.SELECT_LAST:
                 last_mode = options[-1] if options else "Direct"
-                mode_num = LISTENING_MODES.get(last_mode, 15)
-                success = await self._device._send_command(f"Z{zone}ALM{mode_num}")
+                mode_num = mode_map.get(last_mode)
+                if mode_num is None:
+                    mode_num = LISTENING_MODES.get(last_mode, 15)
+                success = await self._device._send_command(
+                    self._get_alm_command(zone, mode_num)
+                )
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             else:

@@ -268,6 +268,14 @@ class AnthemDevice(PersistentConnectionDevice):
                 {MediaAttributes.STATE.value: new_state},
             )
 
+        if message.is_on:
+            asyncio.create_task(self._query_zone_on_power_on(message.zone))
+
+    async def _query_zone_on_power_on(self, zone: int) -> None:
+        await asyncio.sleep(1.5)
+        _LOG.debug("[%s] Querying zone %d state after power on", self.log_id, zone)
+        await self.query_status(zone)
+
     @_handle_message.register
     def _(self, message: ZoneVolume) -> None:
         if message.volume_db < -90 or message.volume_db > 0:
@@ -412,7 +420,13 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: ZoneListeningMode) -> None:
         zone = self._zone_states[message.zone]
-        zone.listening_mode = message.mode_name
+        if self.is_x20_series:
+            mode_name = const.LISTENING_MODES_X20.get(
+                message.mode_number, f"Mode {message.mode_number}"
+            )
+        else:
+            mode_name = message.mode_name
+        zone.listening_mode = mode_name
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_listening_mode"
             self.events.emit(
@@ -420,7 +434,7 @@ class AnthemDevice(PersistentConnectionDevice):
                 sensor_id,
                 {
                     SensorAttributes.STATE.value: SensorStates.ON.value,
-                    SensorAttributes.VALUE.value: message.mode_name,
+                    SensorAttributes.VALUE.value: mode_name,
                 },
             )
 
@@ -477,6 +491,11 @@ class AnthemDevice(PersistentConnectionDevice):
         if not self._model:
             return False
         return "MRX" in self._model.upper()
+
+    @property
+    def is_x20_series(self) -> bool:
+        """Check if this is an x20 series model (MRX 520/720/1120, AVM 60)."""
+        return self._uses_isn_format()
 
     def _uses_isn_format(self) -> bool:
         """
@@ -567,18 +586,29 @@ class AnthemDevice(PersistentConnectionDevice):
         )
 
     async def set_arc(self, enabled: bool, input_num: int = 1) -> bool:
-        """Enable/disable Anthem Room Correction for input."""
+        """Enable/disable Anthem Room Correction. x20: global. x40: per-input."""
+        val = const.VAL_ON if enabled else const.VAL_OFF
+        if self.is_x20_series:
+            return await self._send_command(f"{const.CMD_ARC_X20}{val}")
         return await self._send_command(
-            f"{const.CMD_INPUT_SETTING_PREFIX}{input_num}{const.CMD_ARC_SETTING_SUFFIX}{const.VAL_ON if enabled else const.VAL_OFF}"
+            f"{const.CMD_INPUT_SETTING_PREFIX}{input_num}{const.CMD_ARC_SETTING_SUFFIX}{val}"
         )
 
     async def set_front_panel_brightness(self, brightness: int) -> bool:
-        """Set front panel brightness (0-100%)."""
+        """Set front panel brightness. x20: 0-3 (Off/Low/Med/High). x40: 0-100."""
+        if self.is_x20_series:
+            brightness = max(0, min(3, brightness))
+            return await self._send_command(
+                f"{const.CMD_FRONT_PANEL_BRIGHTNESS_X20}{brightness}"
+            )
         brightness = max(0, min(100, brightness))
         return await self._send_command(f"{const.CMD_FRONT_PANEL_BRIGHTNESS}{brightness}")
 
     async def set_front_panel_display(self, mode: int) -> bool:
-        """Set front panel display mode (0=All, 1=Volume only)."""
+        """Set front panel display mode (0=All, 1=Volume only). x40 only."""
+        if self.is_x20_series:
+            _LOG.debug("[%s] Display mode not supported on x20 series", self.log_id)
+            return False
         mode = max(0, min(1, mode))
         return await self._send_command(f"{const.CMD_FRONT_PANEL_DISPLAY_INFO}{mode}")
 
@@ -609,22 +639,37 @@ class AnthemDevice(PersistentConnectionDevice):
         """Set Zone 2 power-on input (0=Last Used, or input number)."""
         return await self._send_command(f"{const.CMD_ZONE2_POWER_ON_INPUT}{input_num}")
 
-    async def speaker_level_up(self, channel: int, zone: int = 1) -> bool:
-        """Increase speaker level by 0.5dB."""
+    async def speaker_level_up(self, channel: int, zone: int = 1, step: int = 1) -> bool:
+        """Increase speaker level. x20: channel 0-7, step in dB. x40: hex channel."""
+        if self.is_x20_series:
+            return await self._send_command(
+                self._get_zone_command(
+                    zone, const.CMD_LEVEL_UP, f"{channel}{step:02d}"
+                )
+            )
         channel_hex = hex(channel)[2:].upper()
         return await self._send_command(
             self._get_zone_command(zone, const.CMD_LEVEL_UP, channel_hex)
         )
 
-    async def speaker_level_down(self, channel: int, zone: int = 1) -> bool:
-        """Decrease speaker level by 0.5dB."""
+    async def speaker_level_down(self, channel: int, zone: int = 1, step: int = 1) -> bool:
+        """Decrease speaker level. x20: channel 0-7, step in dB. x40: hex channel."""
+        if self.is_x20_series:
+            return await self._send_command(
+                self._get_zone_command(
+                    zone, const.CMD_LEVEL_DOWN, f"{channel}{step:02d}"
+                )
+            )
         channel_hex = hex(channel)[2:].upper()
         return await self._send_command(
             self._get_zone_command(zone, const.CMD_LEVEL_DOWN, channel_hex)
         )
 
     async def set_osd_info(self, mode: int) -> bool:
-        """Set on-screen display info mode (0=Off, 1=16:9, 2=2.4:1)."""
+        """Set on-screen display info mode (0=Off, 1=16:9, 2=2.4:1). x40 only."""
+        if self.is_x20_series:
+            _LOG.debug("[%s] OSD info not supported on x20 series", self.log_id)
+            return False
         mode = max(0, min(2, mode))
         return await self._send_command(f"{const.CMD_OSD_INFO}{mode}")
 
