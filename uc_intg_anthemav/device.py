@@ -212,6 +212,7 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: SystemModel) -> None:
         self._model = message.model
+        self._device_config.discovered_model = message.model
         _LOG.info("[%s] Model: %s", self.log_id, message.model)
         model_sensor_id = f"sensor.{self.identifier}_model"
         self.events.emit(
@@ -375,7 +376,8 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: ZoneAudioFormat) -> None:
         zone = self._zone_states[message.zone]
-        zone.audio_format = message.format
+        decoded = const.AUDIO_FORMAT_NAMES.get(message.format, message.format)
+        zone.audio_format = decoded
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_audio_format"
             self.events.emit(
@@ -383,14 +385,15 @@ class AnthemDevice(PersistentConnectionDevice):
                 sensor_id,
                 {
                     SensorAttributes.STATE.value: SensorStates.ON.value,
-                    SensorAttributes.VALUE.value: message.format,
+                    SensorAttributes.VALUE.value: decoded,
                 },
             )
 
     @_handle_message.register
     def _(self, message: ZoneAudioChannels) -> None:
         zone = self._zone_states[message.zone]
-        zone.audio_channels = message.channels
+        decoded = const.AUDIO_CHANNELS_NAMES.get(message.channels, message.channels)
+        zone.audio_channels = decoded
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_audio_channels"
             self.events.emit(
@@ -398,14 +401,15 @@ class AnthemDevice(PersistentConnectionDevice):
                 sensor_id,
                 {
                     SensorAttributes.STATE.value: SensorStates.ON.value,
-                    SensorAttributes.VALUE.value: message.channels,
+                    SensorAttributes.VALUE.value: decoded,
                 },
             )
 
     @_handle_message.register
     def _(self, message: ZoneVideoResolution) -> None:
         zone = self._zone_states[message.zone]
-        zone.video_resolution = message.resolution
+        decoded = const.VIDEO_RESOLUTION_NAMES.get(message.resolution, message.resolution)
+        zone.video_resolution = decoded
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_video_resolution"
             self.events.emit(
@@ -413,7 +417,7 @@ class AnthemDevice(PersistentConnectionDevice):
                 sensor_id,
                 {
                     SensorAttributes.STATE.value: SensorStates.ON.value,
-                    SensorAttributes.VALUE.value: message.resolution,
+                    SensorAttributes.VALUE.value: decoded,
                 },
             )
 

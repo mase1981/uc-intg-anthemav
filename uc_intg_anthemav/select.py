@@ -42,11 +42,10 @@ LISTENING_MODES_X20 = {
     "AnthemLogic Cinema": 1,
     "AnthemLogic Music": 2,
     "Dolby Surround": 14,
-    "All-Channel Stereo": 7,
-    "PLIIx Movie": 3,
-    "PLIIx Music": 4,
     "Neo:6 Cinema": 5,
     "Neo:6 Music": 6,
+    "All Channel Stereo": 7,
+    "Stereo": 15,
 }
 
 LISTENING_MODE_NAMES = {v: k for k, v in LISTENING_MODES.items()}

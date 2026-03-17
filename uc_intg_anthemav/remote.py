@@ -42,10 +42,9 @@ _ALM_X20 = {
     "ANTHEMLOGIC_CINEMA": 1,
     "ANTHEMLOGIC_MUSIC": 2,
     "ALL_CHANNEL_STEREO": 7,
-    "PLIIX_MOVIE": 3,
-    "PLIIX_MUSIC": 4,
     "NEO6_CINEMA": 5,
     "NEO6_MUSIC": 6,
+    "STEREO": 15,
 }
 
 _SPEAKER_CH_X20 = {
@@ -139,11 +138,10 @@ class AnthemRemote(Remote):
                 ("Dolby\nSurround", "DOLBY_SURROUND", 2),
                 ("AnthemLogic\nCinema", "ANTHEMLOGIC_CINEMA", 2),
                 ("AnthemLogic\nMusic", "ANTHEMLOGIC_MUSIC", 2),
-                ("PLII\nMovie", "PLIIX_MOVIE", 2),
-                ("PLII\nMusic", "PLIIX_MUSIC", 2),
                 ("Neo:6\nCinema", "NEO6_CINEMA", 2),
                 ("Neo:6\nMusic", "NEO6_MUSIC", 2),
                 ("All-Ch\nStereo", "ALL_CHANNEL_STEREO", 2),
+                ("Stereo", "STEREO", 2),
             ]
         else:
             modes = [
@@ -402,12 +400,12 @@ class AnthemRemote(Remote):
                     success = await self._device._send_command(f"Z{zone}TDN1")
             elif command == "BALANCE_LEFT":
                 if is_x20:
-                    success = await self._device._send_command(f"Z{zone}BALl")
+                    success = await self._device._send_command(f"Z{zone}TDN201")
                 else:
                     success = await self._device._send_command(f"Z{zone}BLT")
             elif command == "BALANCE_RIGHT":
                 if is_x20:
-                    success = await self._device._send_command(f"Z{zone}BALr")
+                    success = await self._device._send_command(f"Z{zone}TUP201")
                 else:
                     success = await self._device._send_command(f"Z{zone}BRT")
             elif command == "DOLBY_DRC_NORMAL":

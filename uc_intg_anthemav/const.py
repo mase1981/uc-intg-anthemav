@@ -126,6 +126,50 @@ LISTENING_MODES_X20 = {
     12: "Mono (R)",
     13: "High Blend",
     14: "Dolby Surround",
+    15: "Stereo",
+}
+
+# Sensor decode tables - x20 series raw numeric values to human-readable strings
+AUDIO_FORMAT_NAMES = {
+    "0": "No Audio",
+    "1": "Analog",
+    "2": "PCM",
+    "3": "Dolby",
+    "4": "DSD",
+    "5": "DTS",
+    "6": "Atmos",
+    "7": "Unrecognized",
+}
+
+AUDIO_CHANNELS_NAMES = {
+    "0": "No Audio",
+    "1": "Other",
+    "2": "Mono",
+    "3": "2 Channel",
+    "4": "5.1 Channel",
+    "5": "6.1 Channel",
+    "6": "7.1 Channel",
+    "7": "Atmos",
+}
+
+VIDEO_RESOLUTION_NAMES = {
+    "0": "No Input",
+    "1": "Other",
+    "2": "1080p60",
+    "3": "1080p50",
+    "4": "1080p24",
+    "5": "1080i60",
+    "6": "1080i50",
+    "7": "720p60",
+    "8": "720p50",
+    "9": "480p60",
+    "10": "480i60",
+    "11": "576p50",
+    "12": "576i50",
+    "13": "2160p60",
+    "14": "2160p50",
+    "15": "2160p24",
+    "16": "4Kp60",
 }
 
 # x20 Front Panel Brightness (uses FPB command, not GCFPB)
