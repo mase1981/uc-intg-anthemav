@@ -6,17 +6,17 @@ Anthem A/V dataclass models for state management and message parsing.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass
 class ZoneState:
     """Represents the state of a single zone."""
 
-    power: bool = False
-    volume_db: int = -90
-    muted: bool = False
-    input_number: int = 1
+    power: Optional[bool] = None
+    volume_db: Optional[int] = None
+    muted: Optional[bool] = None
+    input_number: Optional[int] = None
     input_name: str = "Unknown"
     audio_format: str = "Unknown"
     audio_channels: str = "Unknown"

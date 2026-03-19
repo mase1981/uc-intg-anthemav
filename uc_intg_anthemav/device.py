@@ -8,7 +8,6 @@ Anthem A/V Receiver device implementation using PersistentConnectionDevice.
 import asyncio
 import logging
 from typing import Any
-from time import time
 from functools import singledispatchmethod
 from collections import defaultdict
 
@@ -52,9 +51,6 @@ class AnthemDevice(PersistentConnectionDevice):
         self._input_names: dict[int, str] = {}
         self._input_count: int = 0
         self._model: str | None = None
-
-        self._last_volume_update: dict[int, tuple[int, float]] = {}
-        self._volume_debounce_ms = 100
 
     @property
     def identifier(self) -> str:
@@ -258,9 +254,11 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: ZonePower) -> None:
         zone = self._zone_states[message.zone]
+        if zone.power is not None and message.is_on == zone.power:
+            return
         zone.power = message.is_on
-        new_state = "ON" if message.is_on else "OFF"
 
+        new_state = "ON" if message.is_on else "OFF"
         entity_id = self._get_entity_id_for_zone(message.zone)
         if entity_id:
             self.events.emit(
@@ -288,26 +286,11 @@ class AnthemDevice(PersistentConnectionDevice):
             return
 
         zone = self._zone_states[message.zone]
+        if zone.volume_db is not None and message.volume_db == zone.volume_db:
+            return
         zone.volume_db = message.volume_db
         volume_pct = int(((message.volume_db + 90) / 90) * 100)
         volume_pct = max(0, min(100, volume_pct))
-
-        current_time = time()
-        if message.zone in self._last_volume_update:
-            last_vol, last_time = self._last_volume_update[message.zone]
-            time_diff_ms = (current_time - last_time) * 1000
-
-            if last_vol == volume_pct and time_diff_ms < self._volume_debounce_ms:
-                _LOG.debug(
-                    "[%s] Zone %d: Ignoring duplicate volume %d%% (within %dms)",
-                    self.log_id,
-                    message.zone,
-                    volume_pct,
-                    self._volume_debounce_ms,
-                )
-                return
-
-        self._last_volume_update[message.zone] = (volume_pct, current_time)
 
         entity_id = self._get_entity_id_for_zone(message.zone)
         if entity_id:
@@ -341,6 +324,8 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: ZoneMute) -> None:
         zone = self._zone_states[message.zone]
+        if zone.muted is not None and message.is_muted == zone.muted:
+            return
         zone.muted = message.is_muted
 
         entity_id = self._get_entity_id_for_zone(message.zone)
@@ -357,6 +342,8 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: ZoneInput) -> None:
         zone = self._zone_states[message.zone]
+        if zone.input_number is not None and message.input_number == zone.input_number:
+            return
         zone.input_number = message.input_number
         zone.input_name = self._input_names.get(
             message.input_number, f"Input {message.input_number}"
@@ -377,6 +364,8 @@ class AnthemDevice(PersistentConnectionDevice):
     def _(self, message: ZoneAudioFormat) -> None:
         zone = self._zone_states[message.zone]
         decoded = const.AUDIO_FORMAT_NAMES.get(message.format, message.format)
+        if decoded == zone.audio_format:
+            return
         zone.audio_format = decoded
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_audio_format"
@@ -393,6 +382,8 @@ class AnthemDevice(PersistentConnectionDevice):
     def _(self, message: ZoneAudioChannels) -> None:
         zone = self._zone_states[message.zone]
         decoded = const.AUDIO_CHANNELS_NAMES.get(message.channels, message.channels)
+        if decoded == zone.audio_channels:
+            return
         zone.audio_channels = decoded
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_audio_channels"
@@ -409,6 +400,8 @@ class AnthemDevice(PersistentConnectionDevice):
     def _(self, message: ZoneVideoResolution) -> None:
         zone = self._zone_states[message.zone]
         decoded = const.VIDEO_RESOLUTION_NAMES.get(message.resolution, message.resolution)
+        if decoded == zone.video_resolution:
+            return
         zone.video_resolution = decoded
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_video_resolution"
@@ -430,6 +423,8 @@ class AnthemDevice(PersistentConnectionDevice):
             )
         else:
             mode_name = message.mode_name
+        if mode_name == zone.listening_mode:
+            return
         zone.listening_mode = mode_name
         if self._is_sensor_zone(message.zone):
             sensor_id = f"sensor.{self.identifier}_listening_mode"
@@ -445,20 +440,28 @@ class AnthemDevice(PersistentConnectionDevice):
     @_handle_message.register
     def _(self, message: ZoneSampleRateInfo) -> None:
         zone = self._zone_states[message.zone]
+        if message.info == zone.sample_rate:
+            return
         zone.sample_rate = message.info
         self._emit_sample_rate_update(message.zone, message.info)
 
     @_handle_message.register
     def _(self, message: ZoneSampleRate) -> None:
         zone = self._zone_states[message.zone]
-        zone.sample_rate = f"{message.rate_khz} kHz"
+        new_rate = f"{message.rate_khz} kHz"
+        if new_rate == zone.sample_rate:
+            return
+        zone.sample_rate = new_rate
         self._emit_sample_rate_update(message.zone, zone.sample_rate)
 
     @_handle_message.register
     def _(self, message: ZoneBitDepth) -> None:
         zone = self._zone_states[message.zone]
         current_rate = zone.sample_rate if zone.sample_rate != "Unknown" else ""
-        zone.sample_rate = f"{current_rate} / {message.depth}-bit".strip(" /")
+        new_rate = f"{current_rate} / {message.depth}-bit".strip(" /")
+        if new_rate == zone.sample_rate:
+            return
+        zone.sample_rate = new_rate
         self._emit_sample_rate_update(message.zone, zone.sample_rate)
 
     def _emit_sample_rate_update(self, zone_num: int, value: str) -> None:
@@ -490,9 +493,12 @@ class AnthemDevice(PersistentConnectionDevice):
     def _requires_volume_suffix(self) -> bool:
         """
         Determine if this model requires '01' suffix for volume up/down commands.
-        MRX-series models require Z1VUP01/Z1VDN01 format.
+        x40 series (MRX 540/740/1140, AVM 70/90) require Z1VUP01/Z1VDN01 format.
+        x20 series (MRX 520/720/1120, AVM 60) use plain Z1VUP/Z1VDN.
         """
         if not self._model:
+            return False
+        if self.is_x20_series:
             return False
         return "MRX" in self._model.upper()
 

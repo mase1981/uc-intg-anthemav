@@ -67,7 +67,7 @@ class AnthemVolumeSensor(Sensor):
 
         if entity_id == expected_media_player_id:
             zone_state = self._device.get_zone_state(self._zone_config.zone_number)
-            volume_db = zone_state.volume_db
+            volume_db = zone_state.volume_db if zone_state.volume_db is not None else -90
             self.attributes[Attributes.STATE] = States.ON
             self.attributes[Attributes.VALUE] = str(volume_db)
             _LOG.debug("[%s] Volume updated to %d dB", self.id, volume_db)

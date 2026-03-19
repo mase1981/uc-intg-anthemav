@@ -172,14 +172,15 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
         zone_num = self._zone_from_entity_id(entity_id)
         zone_state = device.get_zone_state(zone_num)
         state_str = "ON" if zone_state.power else "OFF"
-        volume_pct = max(0, min(100, int(((zone_state.volume_db + 90) / 90) * 100)))
+        vol_db = zone_state.volume_db if zone_state.volume_db is not None else -90
+        volume_pct = max(0, min(100, int(((vol_db + 90) / 90) * 100)))
 
         if configured_entity.entity_type == EntityTypes.MEDIA_PLAYER:
             source_list = device.get_input_list()
             attrs = {
                 media_player.Attributes.STATE: media_player.States.ON if zone_state.power else media_player.States.OFF,
                 media_player.Attributes.VOLUME: volume_pct,
-                media_player.Attributes.MUTED: zone_state.muted,
+                media_player.Attributes.MUTED: bool(zone_state.muted),
             }
             if source_list:
                 attrs[media_player.Attributes.SOURCE_LIST] = source_list
@@ -196,7 +197,7 @@ class AnthemDriver(BaseIntegrationDriver[AnthemDevice, AnthemDeviceConfig]):
         elif configured_entity.entity_type == EntityTypes.SENSOR:
             sensor_attrs = {sensor.Attributes.STATE: sensor.States.ON}
             if "_volume" in entity_id:
-                sensor_attrs[sensor.Attributes.VALUE] = str(zone_state.volume_db)
+                sensor_attrs[sensor.Attributes.VALUE] = str(zone_state.volume_db if zone_state.volume_db is not None else -90)
             elif "_audio_format" in entity_id:
                 sensor_attrs[sensor.Attributes.VALUE] = zone_state.audio_format
             elif "_audio_channels" in entity_id:
