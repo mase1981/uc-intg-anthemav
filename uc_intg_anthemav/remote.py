@@ -20,21 +20,14 @@ _LOG = logging.getLogger(__name__)
 
 
 _ALM_X40 = {
-    "DOLBY_SURROUND": 3,
-    "DTS_NEURAL_X": 4,
     "ANTHEMLOGIC_CINEMA": 1,
     "ANTHEMLOGIC_MUSIC": 2,
-    "STEREO": 5,
-    "MULTI_CHANNEL_STEREO": 6,
-    "ALL_CHANNEL_STEREO": 7,
-    "PLIIX_MOVIE": 8,
-    "PLIIX_MUSIC": 9,
-    "NEO6_CINEMA": 10,
-    "NEO6_MUSIC": 11,
-    "DOLBY_DIGITAL": 12,
-    "DTS": 13,
-    "PCM_STEREO": 14,
-    "DIRECT": 15,
+    "DOLBY_SURROUND": 3,
+    "DTS_NEURAL_X": 4,
+    "DTS_VIRTUAL_X": 5,
+    "ALL_CHANNEL_STEREO": 6,
+    "MONO": 7,
+    "ALL_CHANNEL_MONO": 8,
 }
 
 _ALM_X20 = {
@@ -97,19 +90,12 @@ def _build_audio_modes_page(is_x20: bool, cmds: list[str]) -> dict:
         modes = [
             ("Dolby\nSurround", "DOLBY_SURROUND", 2),
             ("DTS\nNeural:X", "DTS_NEURAL_X", 2),
+            ("DTS\nVirtual:X", "DTS_VIRTUAL_X", 2),
             ("AnthemLogic\nCinema", "ANTHEMLOGIC_CINEMA", 2),
             ("AnthemLogic\nMusic", "ANTHEMLOGIC_MUSIC", 2),
-            ("Stereo", "STEREO", 2),
-            ("Multi-Ch\nStereo", "MULTI_CHANNEL_STEREO", 2),
-            ("Direct", "DIRECT", 1),
-            ("All-Ch\nStereo", "ALL_CHANNEL_STEREO", 1),
-            ("PLIIx\nMovie", "PLIIX_MOVIE", 1),
-            ("PLIIx\nMusic", "PLIIX_MUSIC", 1),
-            ("Neo:6\nCinema", "NEO6_CINEMA", 1),
-            ("Neo:6\nMusic", "NEO6_MUSIC", 1),
-            ("Dolby\nDigital", "DOLBY_DIGITAL", 1),
-            ("DTS", "DTS", 1),
-            ("PCM\nStereo", "PCM_STEREO", 1),
+            ("All-Ch\nStereo", "ALL_CHANNEL_STEREO", 2),
+            ("Mono", "MONO", 2),
+            ("All-Ch\nMono", "ALL_CHANNEL_MONO", 2),
         ]
 
     x = 0
@@ -318,10 +304,10 @@ class AnthemRemote(RemoteEntity):
         self.subscribe_to_device(device)
 
     async def sync_state(self):
-        if not self._device.is_connected:
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if zone_state.power is None:
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
-        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
         self.update({
             Attributes.STATE: States.ON if zone_state.power else States.OFF,
         })

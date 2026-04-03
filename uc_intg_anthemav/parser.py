@@ -17,6 +17,7 @@ from uc_intg_anthemav.models import (
     InputName,
     ZonePower,
     ZoneVolume,
+    ZoneVolumePercent,
     ZoneMute,
     ZoneInput,
     ZoneAudioFormat,
@@ -74,6 +75,11 @@ def parse_message(response: str) -> Optional[ParsedMessage]:
         if const.RESP_POWER in payload:
             return ZonePower(zone=zone_num, is_on=const.VAL_ON in payload)
 
+        if const.RESP_VOLUME_PERCENT in payload:
+            pvol_match = re.search(rf"{const.RESP_VOLUME_PERCENT}(\d+)", payload)
+            if pvol_match:
+                return ZoneVolumePercent(zone=zone_num, volume_pct=int(pvol_match.group(1)))
+
         if const.RESP_VOLUME in payload:
             vol_match = re.search(rf"{const.RESP_VOLUME}(-?\d+)", payload)
             if vol_match:
@@ -116,7 +122,7 @@ def parse_message(response: str) -> Optional[ParsedMessage]:
                 return ZoneListeningMode(
                     zone=zone_num,
                     mode_number=mode_num,
-                    mode_name=const.LISTENING_MODES.get(mode_num, f"Mode {mode_num}"),
+                    mode_name=f"Mode {mode_num}",
                 )
 
         if const.RESP_AUDIO_INPUT_RATE in payload:

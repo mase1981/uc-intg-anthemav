@@ -15,6 +15,7 @@ class ZoneState:
 
     power: Optional[bool] = None
     volume_db: Optional[int] = None
+    volume_pct: Optional[int] = None
     muted: Optional[bool] = None
     input_number: Optional[int] = None
     input_name: str = "Unknown"
@@ -77,6 +78,13 @@ class ZoneVolume(ZoneMessage):
     """Zone volume in dB (ZxVOL)."""
 
     volume_db: int
+
+
+@dataclass
+class ZoneVolumePercent(ZoneMessage):
+    """Zone volume as percentage (ZxPVOL)."""
+
+    volume_pct: int
 
 
 @dataclass

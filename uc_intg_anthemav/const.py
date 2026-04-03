@@ -7,7 +7,9 @@ CMD_ZONE_PREFIX = "Z"
 # Global System Commands
 CMD_ECHO_OFF = "ECH0"
 CMD_ECHO_ON = "ECH1"
-CMD_STANDBY_IP_CONTROL_ON = "SIP1"
+CMD_STANDBY_IP_CONTROL_ON = "SIP1"  # x20 series
+CMD_TX_STATUS_IP = "GCTXS1"  # x40 series: enable IP status reporting
+CMD_CONNECTED_STANDBY_ON = "GCCSTBY1"  # x40 series: enable connected standby
 CMD_MODEL_QUERY = "IDM?"
 CMD_INPUT_COUNT_QUERY = "ICN?"
 
@@ -38,6 +40,9 @@ CMD_VOLUME_UP = "VUP"
 CMD_VOLUME_DOWN = "VDN"
 CMD_MUTE = "MUT"
 CMD_INPUT = "INP"
+CMD_VOLUME_PERCENT = "PVOL"
+CMD_VOLUME_PERCENT_UP = "PVUP"
+CMD_VOLUME_PERCENT_DOWN = "PVDN"
 CMD_LEVEL_UP = "LUP"
 CMD_LEVEL_DOWN = "LDN"
 
@@ -46,6 +51,7 @@ QUERY_SUFFIX = "?"
 CMD_POWER_QUERY = CMD_POWER + QUERY_SUFFIX
 CMD_VOLUME_QUERY = CMD_VOLUME + QUERY_SUFFIX
 CMD_MUTE_QUERY = CMD_MUTE + QUERY_SUFFIX
+CMD_VOLUME_PERCENT_QUERY = CMD_VOLUME_PERCENT + QUERY_SUFFIX
 CMD_INPUT_QUERY = CMD_INPUT + QUERY_SUFFIX
 
 # Status Queries (Zone Context)
@@ -67,6 +73,7 @@ RESP_INPUT_SETTING = "IS"
 RESP_ZONE_PREFIX = "Z"
 RESP_POWER = "POW"
 RESP_VOLUME = "VOL"
+RESP_VOLUME_PERCENT = "PVOL"
 RESP_MUTE = "MUT"
 RESP_INPUT = "INP"
 RESP_INPUT_NAME = "IN"  # For input name responses (IS01INname), different from RESP_INPUT
@@ -89,24 +96,18 @@ VAL_ON = "1"
 VAL_OFF = "0"
 VAL_TOGGLE = "t"
 
-# Audio Listening Modes - x40 series (MRX 540/740/1140, AVM 70/90) and default
-LISTENING_MODES = {
+# Audio Listening Modes - x40 series (MRX 540/740/1140, AVM 70/90)
+# Verified empirically on MRX 540 and matches python-anthemav library
+LISTENING_MODES_X40 = {
     0: "None",
     1: "AnthemLogic Cinema",
     2: "AnthemLogic Music",
     3: "Dolby Surround",
     4: "DTS Neural:X",
-    5: "Stereo",
-    6: "Multi-Channel Stereo",
-    7: "All-Channel Stereo",
-    8: "PLIIx Movie",
-    9: "PLIIx Music",
-    10: "Neo:6 Cinema",
-    11: "Neo:6 Music",
-    12: "Dolby Digital",
-    13: "DTS",
-    14: "PCM Stereo",
-    15: "Direct",
+    5: "DTS Virtual:X",
+    6: "All Channel Stereo",
+    7: "Mono",
+    8: "All Channel Mono",
 }
 
 # Audio Listening Modes - x20 series (MRX 520/720/1120, AVM 60)
@@ -129,7 +130,7 @@ LISTENING_MODES_X20 = {
     15: "Stereo",
 }
 
-# Sensor decode tables - x20 series raw numeric values to human-readable strings
+# Sensor decode tables - x20 series (MRX 520/720/1120, AVM 60)
 AUDIO_FORMAT_NAMES = {
     "0": "No Audio",
     "1": "Analog",
@@ -138,7 +139,19 @@ AUDIO_FORMAT_NAMES = {
     "4": "DSD",
     "5": "DTS",
     "6": "Atmos",
-    "7": "Unrecognized",
+}
+
+# Sensor decode tables - x40 series (MRX 540/740/1140, AVM 70/90)
+# Verified empirically on MRX 540
+AUDIO_FORMAT_NAMES_X40 = {
+    "0": "No Audio",
+    "1": "Analog",
+    "2": "PCM",
+    "3": "Dolby",
+    "4": "DSD",
+    "5": "DTS",
+    "6": "Atmos",
+    "7": "DTS-X",
 }
 
 AUDIO_CHANNELS_NAMES = {
@@ -152,6 +165,18 @@ AUDIO_CHANNELS_NAMES = {
     "7": "Atmos",
 }
 
+AUDIO_CHANNELS_NAMES_X40 = {
+    "0": "No Audio",
+    "1": "Other",
+    "2": "Mono",
+    "3": "2 Channel",
+    "4": "5.1 Channel",
+    "5": "7.1 Channel",
+    "6": "Atmos",
+    "7": "DTS-X",
+}
+
+# Video resolution - indices 9-13 fixed per both x20 and x40 API docs
 VIDEO_RESOLUTION_NAMES = {
     "0": "No Input",
     "1": "Other",
@@ -162,14 +187,19 @@ VIDEO_RESOLUTION_NAMES = {
     "6": "1080i50",
     "7": "720p60",
     "8": "720p50",
-    "9": "480p60",
-    "10": "480i60",
-    "11": "576p50",
-    "12": "576i50",
-    "13": "2160p60",
-    "14": "2160p50",
-    "15": "2160p24",
-    "16": "4Kp60",
+    "9": "576p50",
+    "10": "576i50",
+    "11": "480p60",
+    "12": "480i60",
+    "13": "3D",
+    "14": "4K",
+}
+
+VIDEO_RESOLUTION_NAMES_X40 = {
+    **VIDEO_RESOLUTION_NAMES,
+    "14": "4K 60Hz",
+    "15": "4K 50Hz",
+    "16": "4K 24Hz",
 }
 
 # x20 Front Panel Brightness (uses FPB command, not GCFPB)

@@ -19,23 +19,16 @@ from uc_intg_anthemav.device import AnthemDevice
 _LOG = logging.getLogger(__name__)
 
 
-LISTENING_MODES = {
+LISTENING_MODES_X40 = {
     "None": 0,
     "AnthemLogic Cinema": 1,
     "AnthemLogic Music": 2,
     "Dolby Surround": 3,
     "DTS Neural:X": 4,
-    "Stereo": 5,
-    "Multi-Channel Stereo": 6,
-    "All-Channel Stereo": 7,
-    "PLIIx Movie": 8,
-    "PLIIx Music": 9,
-    "Neo:6 Cinema": 10,
-    "Neo:6 Music": 11,
-    "Dolby Digital": 12,
-    "DTS": 13,
-    "PCM Stereo": 14,
-    "Direct": 15,
+    "DTS Virtual:X": 5,
+    "All Channel Stereo": 6,
+    "Mono": 7,
+    "All Channel Mono": 8,
 }
 
 LISTENING_MODES_X20 = {
@@ -73,7 +66,7 @@ class AnthemListeningModeSelect(SelectEntity):
         if device_config.is_x20_series:
             options_list = list(LISTENING_MODES_X20.keys())
         else:
-            options_list = list(LISTENING_MODES.keys())
+            options_list = list(LISTENING_MODES_X40.keys())
 
         attributes = {
             Attributes.STATE: States.UNAVAILABLE,
@@ -91,11 +84,11 @@ class AnthemListeningModeSelect(SelectEntity):
         self.subscribe_to_device(device)
 
     async def sync_state(self):
-        if not self._device.is_connected:
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if zone_state.power is None:
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
-        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
-        options_list = list(LISTENING_MODES_X20.keys()) if self._device.is_x20_series else list(LISTENING_MODES.keys())
+        options_list = list(LISTENING_MODES_X20.keys()) if self._device.is_x20_series else list(LISTENING_MODES_X40.keys())
         self.update({
             Attributes.STATE: States.ON,
             Attributes.OPTIONS: options_list,
@@ -108,7 +101,7 @@ class AnthemListeningModeSelect(SelectEntity):
         return f"Z{zone}ALM{mode_num}"
 
     def _get_mode_map(self) -> dict[str, int]:
-        return LISTENING_MODES_X20 if self._device.is_x20_series else LISTENING_MODES
+        return LISTENING_MODES_X20 if self._device.is_x20_series else LISTENING_MODES_X40
 
     async def _handle_command(
         self, entity: Select, cmd_id: str, params: dict[str, Any] | None
@@ -129,7 +122,7 @@ class AnthemListeningModeSelect(SelectEntity):
                 option = params["option"]
                 mode_num = mode_map.get(option)
                 if mode_num is None:
-                    mode_num = LISTENING_MODES.get(option)
+                    mode_num = LISTENING_MODES_X40.get(option)
                 if mode_num is None:
                     _LOG.warning("[%s] Mode not available: %s", self.id, option)
                     return StatusCodes.BAD_REQUEST
@@ -188,10 +181,10 @@ class AnthemListeningModeSelect(SelectEntity):
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.SELECT_LAST:
-                last_mode = options[-1] if options else "Direct"
+                last_mode = options[-1] if options else "All Channel Mono"
                 mode_num = mode_map.get(last_mode)
                 if mode_num is None:
-                    mode_num = LISTENING_MODES.get(last_mode, 15)
+                    mode_num = LISTENING_MODES_X40.get(last_mode, 8)
                 success = await self._device._send_command(
                     self._get_alm_command(zone, mode_num)
                 )
