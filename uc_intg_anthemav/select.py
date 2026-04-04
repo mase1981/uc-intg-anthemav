@@ -63,14 +63,9 @@ class AnthemListeningModeSelect(SelectEntity):
             entity_id = f"select.{device_config.identifier}.zone{zone_config.zone_number}_listening_mode"
             entity_name = f"{device_config.name} Zone {zone_config.zone_number} Listening Mode"
 
-        if device_config.is_x20_series:
-            options_list = list(LISTENING_MODES_X20.keys())
-        else:
-            options_list = list(LISTENING_MODES_X40.keys())
-
         attributes = {
             Attributes.STATE: States.UNAVAILABLE,
-            Attributes.OPTIONS: options_list,
+            Attributes.OPTIONS: [],
             Attributes.CURRENT_OPTION: "",
         }
 
@@ -89,10 +84,11 @@ class AnthemListeningModeSelect(SelectEntity):
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
         options_list = list(LISTENING_MODES_X20.keys()) if self._device.is_x20_series else list(LISTENING_MODES_X40.keys())
+        current = zone_state.listening_mode
         self.update({
             Attributes.STATE: States.ON,
             Attributes.OPTIONS: options_list,
-            Attributes.CURRENT_OPTION: zone_state.listening_mode,
+            Attributes.CURRENT_OPTION: current if current != "Unknown" else "",
         })
 
     def _get_alm_command(self, zone: int, mode_num: int) -> str:

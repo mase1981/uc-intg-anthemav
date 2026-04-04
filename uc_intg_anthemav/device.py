@@ -113,6 +113,10 @@ class AnthemDevice(PersistentConnectionDevice):
                     self._get_zone_command(zone.zone_number, const.CMD_POWER_QUERY)
                 )
                 await asyncio.sleep(0.05)
+                await self._send_command(
+                    self._get_zone_command(zone.zone_number, const.CMD_LISTENING_MODE_QUERY)
+                )
+                await asyncio.sleep(0.05)
 
         await self._read_initial_responses(timeout=2.0)
         _LOG.info("[%s] Connection established and initialized", self.log_id)
@@ -308,7 +312,13 @@ class AnthemDevice(PersistentConnectionDevice):
 
         The receiver does not push AIF/AIC/VIR updates unsolicited.
         Confirmed by Anthem technical support.
+        Only polls AIF, AIC, VIR — avoids IRH/IRV which can trigger OSD.
         """
+        poll_queries = [
+            const.CMD_AUDIO_FORMAT_QUERY,
+            const.CMD_AUDIO_CHANNELS_QUERY,
+            const.CMD_VIDEO_RESOLUTION_QUERY,
+        ]
         while True:
             state = self._zone_states[zone]
             if not state.power:
@@ -318,8 +328,9 @@ class AnthemDevice(PersistentConnectionDevice):
             state = self._zone_states[zone]
             if not state.power:
                 return
-            await self.query_audio_info(zone)
-            await self.query_video_info(zone)
+            for q in poll_queries:
+                await self._send_command(self._get_zone_command(zone, q))
+                await asyncio.sleep(0.05)
 
     @_handle_message.register
     def _(self, message: ZoneVolume) -> None:
