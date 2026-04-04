@@ -79,10 +79,10 @@ class AnthemListeningModeSelect(SelectEntity):
         self.subscribe_to_device(device)
 
     async def sync_state(self):
-        if not self._device.is_connected:
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if zone_state.power is None:
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
-        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
         options_list = list(LISTENING_MODES_X20.keys()) if self._device.is_x20_series else list(LISTENING_MODES_X40.keys())
         current = zone_state.listening_mode
         self.update({

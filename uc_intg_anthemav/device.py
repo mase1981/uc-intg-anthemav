@@ -142,6 +142,10 @@ class AnthemDevice(PersistentConnectionDevice):
 
     async def close_connection(self) -> None:
         """Close TCP connection."""
+        task = self._sensor_poll_tasks.pop(1, None)
+        if task:
+            task.cancel()
+
         if self._writer:
             try:
                 self._writer.close()
@@ -151,6 +155,8 @@ class AnthemDevice(PersistentConnectionDevice):
 
         self._reader = None
         self._writer = None
+        self._zone_states.clear()
+        self.push_update()
 
     async def maintain_connection(self) -> None:
         buffer = ""

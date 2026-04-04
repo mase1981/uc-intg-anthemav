@@ -304,10 +304,10 @@ class AnthemRemote(RemoteEntity):
         self.subscribe_to_device(device)
 
     async def sync_state(self):
-        if not self._device.is_connected:
+        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
+        if zone_state.power is None:
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
-        zone_state = self._device.get_zone_state(self._zone_config.zone_number)
         self.update({
             Attributes.STATE: States.ON if zone_state.power else States.OFF,
         })

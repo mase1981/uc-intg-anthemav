@@ -41,7 +41,7 @@ class AnthemSensor(SensorEntity):
         self.subscribe_to_device(device)
 
     async def sync_state(self):
-        if not self._device.is_connected:
+        if self._device.get_zone_state(1).power is None:
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
         value = self._device.get_sensor_value(self._sensor_key)
