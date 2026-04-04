@@ -100,6 +100,7 @@ class AnthemDevice(PersistentConnectionDevice):
 
         await self._read_initial_responses(timeout=2.0)
         _LOG.info("[%s] Connection established and initialized", self.log_id)
+        self.push_update()
         return (self._reader, self._writer)
 
     async def _read_initial_responses(self, timeout: float = 2.0) -> None:
@@ -437,16 +438,20 @@ class AnthemDevice(PersistentConnectionDevice):
         )
 
     async def volume_up(self, zone: int = 1) -> bool:
-        suffix = "01" if self._requires_volume_suffix() else ""
-        return await self._send_command(
-            self._get_zone_command(zone, const.CMD_VOLUME_UP, suffix)
-        )
+        zone_state = self._zone_states[zone]
+        current = zone_state.volume_db if zone_state.volume_db is not None else -50
+        new_vol = min(0, current + 1)
+        zone_state.volume_db = new_vol
+        self.push_update()
+        return await self.set_volume(new_vol, zone)
 
     async def volume_down(self, zone: int = 1) -> bool:
-        suffix = "01" if self._requires_volume_suffix() else ""
-        return await self._send_command(
-            self._get_zone_command(zone, const.CMD_VOLUME_DOWN, suffix)
-        )
+        zone_state = self._zone_states[zone]
+        current = zone_state.volume_db if zone_state.volume_db is not None else -50
+        new_vol = max(-90, current - 1)
+        zone_state.volume_db = new_vol
+        self.push_update()
+        return await self.set_volume(new_vol, zone)
 
     async def set_mute(self, muted: bool, zone: int = 1) -> bool:
         return await self._send_command(
@@ -623,5 +628,3 @@ class AnthemDevice(PersistentConnectionDevice):
     def _get_zone_command(self, zone: int, command: str, value: Any = "") -> str:
         return f"{const.CMD_ZONE_PREFIX}{zone}{command}{value}"
 
-    def _requires_volume_suffix(self) -> bool:
-        return False

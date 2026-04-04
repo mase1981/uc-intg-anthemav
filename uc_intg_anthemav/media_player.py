@@ -124,14 +124,10 @@ class AnthemMediaPlayer(MediaPlayerEntity):
 
             elif cmd_id == Commands.VOLUME_UP:
                 success = await self._device.volume_up(zone)
-                if success:
-                    asyncio.create_task(self._device.query_volume(zone))
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.VOLUME_DOWN:
                 success = await self._device.volume_down(zone)
-                if success:
-                    asyncio.create_task(self._device.query_volume(zone))
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             elif cmd_id == Commands.MUTE_TOGGLE:
