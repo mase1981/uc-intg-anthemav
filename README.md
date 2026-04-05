@@ -65,15 +65,17 @@ This integration provides comprehensive control of Anthem A/V receivers and proc
 ### **Supported Models**
 
 #### **MRX Series** - Receivers
-- MRX 520 - 11-channel receiver with Dolby Atmos
-- MRX 720 - 11-channel receiver with enhanced processing
-- MRX 1120 - 11-channel flagship receiver
-- MRX 1140 - 15-channel flagship with advanced features
+- MRX 520 - 5.1-channel receiver
+- MRX 720 - 7.1-channel receiver
+- MRX 1120 - 11.2-channel receiver
+- MRX 540 4K/8K - 5.1-channel receiver
+- MRX 740 4K/8K - 7.1-channel receiver
+- MRX 1140 4K/8K - 11.2-channel receiver
 
 #### **AVM Series** - Processors
-- AVM 60 - 7.1/5.1.2 processor
-- AVM 70 - 15.1 processor with Dolby Atmos
-- AVM 90 - 16-channel reference processor
+- AVM 60 - 11.2-channel processor
+- AVM 70 - 15.2-channel processor
+- AVM 90 - 15.4-channel processor
 
 #### **STR Series** - Integrated Amplifiers
 - All STR models with IP control support
