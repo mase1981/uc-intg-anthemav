@@ -200,6 +200,11 @@ VIDEO_RESOLUTION_NAMES_X40 = {
     "14": "4K 60Hz",
     "15": "4K 50Hz",
     "16": "4K 24Hz",
+    # Values 17+ are not in the Anthem API doc (v5, Aug 2020).
+    # Empirically identified on MRX 540 8K (firmware HD.80/00.04).
+    # Anthem support was unable to provide the extended table.
+    # The difference between 16 and 18 (both 4K 24Hz, 3840x2160) is unknown.
+    "18": "4K 24Hz",
 }
 
 # x20 Front Panel Brightness (uses FPB command, not GCFPB)
