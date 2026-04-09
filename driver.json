@@ -5,7 +5,7 @@
   "name": {
     "en": "Anthem A/V Receivers"
   },
-  "icon": "uc:cloud-music",
+  "icon": "custom:anthem.png",
   "description": {
     "en": "Integration for Anthem A/V receivers and processors with multi-zone support"
   },
