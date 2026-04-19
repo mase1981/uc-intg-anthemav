@@ -55,6 +55,7 @@ class AnthemDevice(PersistentConnectionDevice):
         # delay_seconds). Populated by send_with_retry(); drained by
         # _process_response when the receiver returns !E<command>.
         self._pending_retries: dict[str, tuple[int, float]] = {}
+        self._retry_tasks: set[asyncio.Task] = set()
 
     @property
     def identifier(self) -> str:
@@ -161,6 +162,9 @@ class AnthemDevice(PersistentConnectionDevice):
         self._writer = None
         self._zone_states.clear()
         self._pending_retries.clear()
+        for task in self._retry_tasks:
+            task.cancel()
+        self._retry_tasks.clear()
         self.push_update()
 
     async def maintain_connection(self) -> None:
@@ -251,7 +255,9 @@ class AnthemDevice(PersistentConnectionDevice):
                         "[%s] Command '%s' rejected; retrying (%d attempts left)",
                         self.log_id, echoed, attempts,
                     )
-                    asyncio.create_task(self._resend_after_delay(echoed, delay))
+                    task = asyncio.create_task(self._resend_after_delay(echoed, delay))
+                    self._retry_tasks.add(task)
+                    task.add_done_callback(self._retry_tasks.discard)
                 else:
                     _LOG.error(
                         "[%s] Command '%s' rejected after all retries, giving up",
@@ -381,6 +387,8 @@ class AnthemDevice(PersistentConnectionDevice):
             return
 
         zone = self._zone_states[message.zone]
+        cmd_key = self._get_zone_command(message.zone, const.CMD_VOLUME, volume_db)
+        self._pending_retries.pop(cmd_key, None)
         if zone.volume_db is not None and volume_db == zone.volume_db:
             return
         zone.volume_db = volume_db
@@ -396,6 +404,8 @@ class AnthemDevice(PersistentConnectionDevice):
     def _(self, message: ZoneVolumePercent) -> None:
         zone = self._zone_states[message.zone]
         pct = max(0, min(100, message.volume_pct))
+        cmd_key = self._get_zone_command(message.zone, const.CMD_VOLUME_PERCENT, pct)
+        self._pending_retries.pop(cmd_key, None)
         if zone.volume_pct is not None and pct == zone.volume_pct:
             return
         zone.volume_pct = pct
