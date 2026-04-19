@@ -51,6 +51,10 @@ class AnthemDevice(PersistentConnectionDevice):
         self._input_count: int = 0
         self._model: str | None = None
         self._sensor_poll_tasks: dict[int, asyncio.Task] = {}
+        # Maps a command string (e.g. "Z1VOL-45") to (attempts_remaining,
+        # delay_seconds). Populated by send_with_retry(); drained by
+        # _process_response when the receiver returns !E<command>.
+        self._pending_retries: dict[str, tuple[int, float]] = {}
 
     @property
     def identifier(self) -> str:
@@ -156,6 +160,7 @@ class AnthemDevice(PersistentConnectionDevice):
         self._reader = None
         self._writer = None
         self._zone_states.clear()
+        self._pending_retries.clear()
         self.push_update()
 
     async def maintain_connection(self) -> None:
@@ -202,13 +207,62 @@ class AnthemDevice(PersistentConnectionDevice):
             _LOG.error("[%s] Error sending command %s: %s", self.log_id, command, err)
             return False
 
+    async def send_with_retry(
+        self,
+        command: str,
+        max_attempts: int = const.RETRY_MAX_ATTEMPTS_DEFAULT,
+        delay: float = const.RETRY_DELAY_SECONDS_DEFAULT,
+    ) -> bool:
+        """Send a command, retrying if the receiver rejects it with ``!E``.
+
+        Correlation is by the echoed command string: when ``!E<command>``
+        arrives in the read loop, the attempt counter for that exact command
+        is decremented and a re-send is scheduled ``delay`` seconds later.
+        After ``max_attempts`` rejections an error is logged and the registry
+        entry is dropped.
+
+        The initial send is awaited and its bool result returned. Retries
+        happen asynchronously in the response handler — this coroutine does
+        not block on them.
+        """
+        self._pending_retries[command] = (max_attempts, delay)
+        return await self._send_command(command)
+
+    async def _resend_after_delay(self, command: str, delay: float) -> None:
+        """Wait out the retry delay and re-emit the command."""
+        await asyncio.sleep(delay)
+        await self._send_command(command)
+
     async def _process_response(self, response: str) -> None:
         """Process a response from the receiver."""
         _LOG.debug("[%s] RECEIVED: %s", self.log_id, response)
 
-        if response.startswith(const.RESP_ERROR_INVALID_COMMAND) or response.startswith(
-            const.RESP_ERROR_EXECUTION_FAILED
-        ):
+        if response.startswith(const.RESP_ERROR_EXECUTION_FAILED):
+            # !E<echoed-command>. If the caller asked us to retry this
+            # command via send_with_retry(), decrement the attempt counter
+            # and schedule a re-send. Otherwise fall through to the warning.
+            echoed = response[len(const.RESP_ERROR_EXECUTION_FAILED):]
+            if echoed in self._pending_retries:
+                attempts, delay = self._pending_retries[echoed]
+                attempts -= 1
+                if attempts > 0:
+                    self._pending_retries[echoed] = (attempts, delay)
+                    _LOG.info(
+                        "[%s] Command '%s' rejected; retrying (%d attempts left)",
+                        self.log_id, echoed, attempts,
+                    )
+                    asyncio.create_task(self._resend_after_delay(echoed, delay))
+                else:
+                    _LOG.error(
+                        "[%s] Command '%s' rejected after all retries, giving up",
+                        self.log_id, echoed,
+                    )
+                    self._pending_retries.pop(echoed, None)
+                return
+            _LOG.warning("[%s] Device error: %s", self.log_id, response)
+            return
+
+        if response.startswith(const.RESP_ERROR_INVALID_COMMAND):
             _LOG.warning("[%s] Device error: %s", self.log_id, response)
             return
 
@@ -496,8 +550,15 @@ class AnthemDevice(PersistentConnectionDevice):
 
     async def set_volume(self, volume_db: int, zone: int = 1) -> bool:
         volume_db = max(-90, min(10, volume_db))
-        return await self._send_command(
-            self._get_zone_command(zone, const.CMD_VOLUME, volume_db)
+        # Skip no-op writes: the receiver returns !E when asked to set to
+        # its current value, which would otherwise trigger pointless retries.
+        zone_state = self._zone_states.get(zone)
+        if zone_state is not None and zone_state.volume_db == volume_db:
+            return True
+        return await self.send_with_retry(
+            self._get_zone_command(zone, const.CMD_VOLUME, volume_db),
+            max_attempts=const.VOLUME_RETRY_MAX_ATTEMPTS,
+            delay=const.VOLUME_RETRY_DELAY_SECONDS,
         )
 
     async def volume_up(self, zone: int = 1) -> bool:
@@ -519,8 +580,14 @@ class AnthemDevice(PersistentConnectionDevice):
     async def set_volume_percent(self, percent: int, zone: int = 1) -> bool:
         """Set volume as percentage (x40 series only)."""
         percent = max(0, min(100, percent))
-        return await self._send_command(
-            self._get_zone_command(zone, const.CMD_VOLUME_PERCENT, percent)
+        # Skip no-op writes (same rationale as set_volume).
+        zone_state = self._zone_states.get(zone)
+        if zone_state is not None and zone_state.volume_pct == percent:
+            return True
+        return await self.send_with_retry(
+            self._get_zone_command(zone, const.CMD_VOLUME_PERCENT, percent),
+            max_attempts=const.VOLUME_RETRY_MAX_ATTEMPTS,
+            delay=const.VOLUME_RETRY_DELAY_SECONDS,
         )
 
     async def volume_up_percent(self, zone: int = 1) -> bool:

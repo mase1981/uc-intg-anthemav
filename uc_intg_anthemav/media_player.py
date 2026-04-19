@@ -13,6 +13,7 @@ from ucapi import StatusCodes
 from ucapi.media_player import Attributes, Commands, DeviceClasses, Features, MediaPlayer, States, Options
 from ucapi_framework import MediaPlayerEntity
 
+from uc_intg_anthemav import const
 from uc_intg_anthemav.config import AnthemDeviceConfig, ZoneConfig
 from uc_intg_anthemav.device import AnthemDevice
 
@@ -59,6 +60,7 @@ class AnthemMediaPlayer(MediaPlayerEntity):
                 Commands.VOLUME_UP,
                 Commands.VOLUME_DOWN,
                 Commands.MUTE_TOGGLE,
+                *const.VOLUME_DB_PRESETS.keys(),
             ]
         }
 
@@ -169,6 +171,11 @@ class AnthemMediaPlayer(MediaPlayerEntity):
                         return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                     return StatusCodes.BAD_REQUEST
                 return StatusCodes.BAD_REQUEST
+
+            elif cmd_id in const.VOLUME_DB_PRESETS:
+                target_db = const.VOLUME_DB_PRESETS[cmd_id]
+                success = await self._device.set_volume(target_db, zone)
+                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             else:
                 _LOG.debug("[%s] Unsupported command: %s", self.id, cmd_id)

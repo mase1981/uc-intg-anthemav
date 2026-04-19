@@ -46,6 +46,31 @@ CMD_VOLUME_PERCENT_DOWN = "PVDN"
 CMD_LEVEL_UP = "LUP"
 CMD_LEVEL_DOWN = "LDN"
 
+# Fixed-value dB preset commands exposed as simple_commands on the media_player.
+# UC doesn't support parameterized custom commands (only built-in VOLUME gets a
+# 0-100 entry field), so we expose a discrete set of dB targets. 5 dB steps
+# cover the receiver's full usable range.
+VOLUME_DB_PRESETS: dict[str, int] = {
+    **{f"VOLUME_DB_MINUS_{abs(db)}": db for db in range(-90, 0, 5)},
+    "VOLUME_DB_ZERO": 0,
+}
+
+# Generic retry defaults for AnthemDevice.send_with_retry(). Chosen to be
+# small enough not to pile up latency for commands the receiver rejects for
+# genuine reasons (wrong state, wrong value). Callers whose command needs a
+# longer window should pass explicit max_attempts / delay.
+RETRY_MAX_ATTEMPTS_DEFAULT = 3
+RETRY_DELAY_SECONDS_DEFAULT = 0.5
+
+# Volume (VOL/PVOL) retry budget. On cold-start, the MRX 540 rejects VOL
+# writes for several seconds after Z1POW1 while its internal state settles.
+# On a test with power-on volume -35 dB and user target -70 dB, the 8th
+# attempt was the first to succeed (~7.2 s after first send). Twelve
+# attempts at 1 s spacing gives ~12 s of coverage; raise this if longer
+# windows are observed on other receivers or power-on configurations.
+VOLUME_RETRY_MAX_ATTEMPTS = 12
+VOLUME_RETRY_DELAY_SECONDS = 1.0
+
 # Queries (Suffix with ?)
 QUERY_SUFFIX = "?"
 CMD_POWER_QUERY = CMD_POWER + QUERY_SUFFIX
