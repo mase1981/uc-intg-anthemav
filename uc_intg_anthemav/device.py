@@ -548,13 +548,19 @@ class AnthemDevice(PersistentConnectionDevice):
             self._get_zone_command(zone, const.CMD_POWER, const.VAL_OFF)
         )
 
-    async def set_volume(self, volume_db: int, zone: int = 1) -> bool:
+    async def set_volume(
+        self, volume_db: int, zone: int = 1, skip_if_redundant: bool = True
+    ) -> bool:
         volume_db = max(-90, min(10, volume_db))
         # Skip no-op writes: the receiver returns !E when asked to set to
         # its current value, which would otherwise trigger pointless retries.
-        zone_state = self._zone_states.get(zone)
-        if zone_state is not None and zone_state.volume_db == volume_db:
-            return True
+        # Callers that have already mutated zone_state optimistically (e.g.
+        # volume_up/volume_down on x20) must pass skip_if_redundant=False,
+        # otherwise this check short-circuits and the receiver is never told.
+        if skip_if_redundant:
+            zone_state = self._zone_states.get(zone)
+            if zone_state is not None and zone_state.volume_db == volume_db:
+                return True
         return await self.send_with_retry(
             self._get_zone_command(zone, const.CMD_VOLUME, volume_db),
             max_attempts=const.VOLUME_RETRY_MAX_ATTEMPTS,
@@ -567,7 +573,9 @@ class AnthemDevice(PersistentConnectionDevice):
         new_vol = min(0, current + 1)
         zone_state.volume_db = new_vol
         self.push_update()
-        return await self.set_volume(new_vol, zone)
+        # skip_if_redundant=False: the optimistic zone_state update above
+        # makes set_volume think it's already at new_vol. Force the send.
+        return await self.set_volume(new_vol, zone, skip_if_redundant=False)
 
     async def volume_down(self, zone: int = 1) -> bool:
         zone_state = self._zone_states[zone]
@@ -575,15 +583,21 @@ class AnthemDevice(PersistentConnectionDevice):
         new_vol = max(-90, current - 1)
         zone_state.volume_db = new_vol
         self.push_update()
-        return await self.set_volume(new_vol, zone)
+        # See volume_up for why skip_if_redundant=False.
+        return await self.set_volume(new_vol, zone, skip_if_redundant=False)
 
-    async def set_volume_percent(self, percent: int, zone: int = 1) -> bool:
+    async def set_volume_percent(
+        self, percent: int, zone: int = 1, skip_if_redundant: bool = True
+    ) -> bool:
         """Set volume as percentage (x40 series only)."""
         percent = max(0, min(100, percent))
-        # Skip no-op writes (same rationale as set_volume).
-        zone_state = self._zone_states.get(zone)
-        if zone_state is not None and zone_state.volume_pct == percent:
-            return True
+        # Skip no-op writes (same rationale as set_volume). No x40 caller
+        # mutates zone_state before calling this today, but the flag is
+        # exposed for symmetry with set_volume.
+        if skip_if_redundant:
+            zone_state = self._zone_states.get(zone)
+            if zone_state is not None and zone_state.volume_pct == percent:
+                return True
         return await self.send_with_retry(
             self._get_zone_command(zone, const.CMD_VOLUME_PERCENT, percent),
             max_attempts=const.VOLUME_RETRY_MAX_ATTEMPTS,
