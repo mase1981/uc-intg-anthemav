@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from ucapi import StatusCodes
-from ucapi.remote import Attributes, Commands, Features, Options, Remote, States
+from ucapi.remote import Attributes, Commands, Features, Remote, States
 from ucapi_framework import RemoteEntity
 
 from uc_intg_anthemav.config import AnthemDeviceConfig, ZoneConfig
@@ -293,13 +293,10 @@ class AnthemRemote(RemoteEntity):
             entity_name,
             features,
             attributes,
+            simple_commands=simple_commands,
+            ui_pages=user_interface["pages"],
             cmd_handler=self._handle_command,
         )
-
-        self.options = {
-            Options.SIMPLE_COMMANDS: simple_commands,
-            "user_interface": user_interface,
-        }
 
         self.subscribe_to_device(device)
 

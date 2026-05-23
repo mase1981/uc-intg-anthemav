@@ -380,7 +380,7 @@ class AnthemDevice(PersistentConnectionDevice):
 
         if volume_db < -90 or volume_db > 10:
             _LOG.warning(
-                "[%s] Invalid volume value: %d, ignoring",
+                "[%s] Invalid volume value: %g, ignoring",
                 self.log_id,
                 message.volume_db,
             )
@@ -393,7 +393,7 @@ class AnthemDevice(PersistentConnectionDevice):
             return
         zone.volume_db = volume_db
         _LOG.debug(
-            "[%s] Zone %d: Volume update %ddB",
+            "[%s] Zone %d: Volume update %gdB",
             self.log_id,
             message.zone,
             volume_db,
@@ -539,7 +539,7 @@ class AnthemDevice(PersistentConnectionDevice):
             return self._model
         zone = self._zone_states[1]
         mapping = {
-            "volume": str(zone.volume_db) if zone.volume_db is not None else None,
+            "volume": f"{zone.volume_db:g}" if zone.volume_db is not None else None,
             "audio_format": zone.audio_format if zone.audio_format != "Unknown" else None,
             "audio_channels": zone.audio_channels if zone.audio_channels != "Unknown" else None,
             "video_resolution": zone.video_resolution if zone.video_resolution != "Unknown" else None,
@@ -559,9 +559,9 @@ class AnthemDevice(PersistentConnectionDevice):
         )
 
     async def set_volume(
-        self, volume_db: int, zone: int = 1, skip_if_redundant: bool = True
+        self, volume_db: float, zone: int = 1, skip_if_redundant: bool = True
     ) -> bool:
-        volume_db = max(-90, min(10, volume_db))
+        volume_db = max(-90.0, min(10.0, volume_db))
         # Skip no-op writes: the receiver returns !E when asked to set to
         # its current value, which would otherwise trigger pointless retries.
         # Callers that have already mutated zone_state optimistically (e.g.
@@ -624,6 +624,26 @@ class AnthemDevice(PersistentConnectionDevice):
         """Volume down by 1% (x40 series only)."""
         return await self._send_command(
             self._get_zone_command(zone, const.CMD_VOLUME_PERCENT_DOWN)
+        )
+
+    async def volume_up_step(self, zone: int = 1) -> bool:
+        """Volume up by native 0.5 dB step (x40 VUP) with optimistic update."""
+        zone_state = self._zone_states[zone]
+        current = zone_state.volume_db if zone_state.volume_db is not None else -50.0
+        zone_state.volume_db = min(10.0, current + 0.5)
+        self.push_update()
+        return await self._send_command(
+            self._get_zone_command(zone, const.CMD_VOLUME_UP)
+        )
+
+    async def volume_down_step(self, zone: int = 1) -> bool:
+        """Volume down by native 0.5 dB step (x40 VDN) with optimistic update."""
+        zone_state = self._zone_states[zone]
+        current = zone_state.volume_db if zone_state.volume_db is not None else -50.0
+        zone_state.volume_db = max(-90.0, current - 0.5)
+        self.push_update()
+        return await self._send_command(
+            self._get_zone_command(zone, const.CMD_VOLUME_DOWN)
         )
 
     async def set_mute(self, muted: bool, zone: int = 1) -> bool:
@@ -804,5 +824,7 @@ class AnthemDevice(PersistentConnectionDevice):
         return self._zone_states[zone]
 
     def _get_zone_command(self, zone: int, command: str, value: Any = "") -> str:
+        if isinstance(value, float):
+            value = f"{value:g}"
         return f"{const.CMD_ZONE_PREFIX}{zone}{command}{value}"
 

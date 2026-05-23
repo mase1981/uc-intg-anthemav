@@ -14,7 +14,7 @@ class ZoneState:
     """Represents the state of a single zone."""
 
     power: Optional[bool] = None
-    volume_db: Optional[int] = None
+    volume_db: Optional[float] = None
     volume_pct: Optional[int] = None
     muted: Optional[bool] = None
     input_number: Optional[int] = None
@@ -77,7 +77,7 @@ class ZonePower(ZoneMessage):
 class ZoneVolume(ZoneMessage):
     """Zone volume in dB (ZxVOL)."""
 
-    volume_db: int
+    volume_db: float
 
 
 @dataclass
