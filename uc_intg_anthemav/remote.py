@@ -58,8 +58,37 @@ _SPEAKER_CH_X40 = {
     "LEVEL_HEIGHTS": 10,
 }
 
+# Simulated-IR (ZxSIMyyyy) keys. Identical codes on x20 and x40 (verified
+# against both IP/RS-232 specs), so no platform branching is needed. Main-Zone
+# only per both specs. Event-model: set-only, no state feedback -- the only
+# protocol path to drive the on-screen Setup/OSD menu and numeric entry.
+_SIM_CODES = {
+    "CURSOR_UP": "0018",
+    "CURSOR_DOWN": "0019",
+    "CURSOR_LEFT": "0020",
+    "CURSOR_RIGHT": "0021",
+    "CURSOR_ENTER": "0022",
+    "SETUP": "0012",
+    "BACK": "0028",
+    "INFO_IR": "0017",
+    "PAGE_UP": "0023",
+    "PAGE_DOWN": "0024",
+    "CLEAR": "0035",
+    "PRESET": "0036",
+    "DIGIT_0": "0000",
+    "DIGIT_1": "0001",
+    "DIGIT_2": "0002",
+    "DIGIT_3": "0003",
+    "DIGIT_4": "0004",
+    "DIGIT_5": "0005",
+    "DIGIT_6": "0006",
+    "DIGIT_7": "0007",
+    "DIGIT_8": "0008",
+    "DIGIT_9": "0009",
+}
 
-def _build_ui(is_x20: bool) -> tuple[list[str], dict]:
+
+def _build_ui(is_x20: bool, zone_number: int) -> tuple[list[str], dict]:
     simple_commands = []
     pages = []
 
@@ -68,6 +97,11 @@ def _build_ui(is_x20: bool) -> tuple[list[str], dict]:
     pages.append(_build_dolby_settings_page(is_x20, simple_commands))
     pages.append(_build_system_settings_page(is_x20, simple_commands))
     pages.append(_build_speaker_levels_page(simple_commands))
+
+    # Navigation/OSD + keypad keys are Main-Zone only per both specs.
+    if zone_number == 1:
+        pages.append(_build_navigation_page(simple_commands))
+        pages.append(_build_keypad_page(simple_commands))
 
     return simple_commands, {"pages": pages}
 
@@ -259,6 +293,58 @@ def _build_speaker_levels_page(cmds: list[str]) -> dict:
     }
 
 
+def _build_navigation_page(cmds: list[str]) -> dict:
+    # Echoes the physical RC-MRX 2 nav cluster: Setup/Info above the D-pad,
+    # Clear/Last below it, page keys at the bottom corners.
+    # Info here is the simulated-IR remote key (INFO_IR / SIM 0017), distinct
+    # from the native OSD-overlay "INFO" command on the Audio Modes page.
+    cmds.extend([
+        "CURSOR_UP", "CURSOR_DOWN", "CURSOR_LEFT", "CURSOR_RIGHT",
+        "CURSOR_ENTER", "SETUP", "BACK", "INFO_IR", "PAGE_UP", "PAGE_DOWN",
+        "CLEAR",
+    ])
+    items = [
+        {"type": "text", "text": "Setup", "command": {"cmd_id": "SETUP"}, "location": {"x": 0, "y": 0}, "size": {"width": 1, "height": 1}},
+        {"type": "icon", "icon": "uc:up-arrow", "command": {"cmd_id": "CURSOR_UP"}, "location": {"x": 1, "y": 0}},
+        {"type": "text", "text": "Info", "command": {"cmd_id": "INFO_IR"}, "location": {"x": 3, "y": 0}, "size": {"width": 1, "height": 1}},
+        {"type": "icon", "icon": "uc:left-arrow", "command": {"cmd_id": "CURSOR_LEFT"}, "location": {"x": 0, "y": 1}},
+        {"type": "text", "text": "OK", "command": {"cmd_id": "CURSOR_ENTER"}, "location": {"x": 1, "y": 1}, "size": {"width": 1, "height": 1}},
+        {"type": "icon", "icon": "uc:right-arrow", "command": {"cmd_id": "CURSOR_RIGHT"}, "location": {"x": 2, "y": 1}},
+        {"type": "text", "text": "Clear", "command": {"cmd_id": "CLEAR"}, "location": {"x": 0, "y": 2}, "size": {"width": 1, "height": 1}},
+        {"type": "icon", "icon": "uc:down-arrow", "command": {"cmd_id": "CURSOR_DOWN"}, "location": {"x": 1, "y": 2}},
+        {"type": "text", "text": "Last", "command": {"cmd_id": "BACK"}, "location": {"x": 3, "y": 2}, "size": {"width": 1, "height": 1}},
+        {"type": "text", "text": "Page\nUp", "command": {"cmd_id": "PAGE_UP"}, "location": {"x": 0, "y": 3}, "size": {"width": 1, "height": 1}},
+        {"type": "text", "text": "Page\nDown", "command": {"cmd_id": "PAGE_DOWN"}, "location": {"x": 3, "y": 3}, "size": {"width": 1, "height": 1}},
+    ]
+    return {
+        "page_id": "navigation", "name": "Navigation",
+        "grid": {"width": 4, "height": 4}, "items": items,
+    }
+
+
+def _build_keypad_page(cmds: list[str]) -> dict:
+    # Phone-style keypad echoing the RC-MRX 2: 1-9 grid, Preset/0 at the bottom.
+    # The remote's Input key (bottom-right) is omitted -- input stays native.
+    # Grid is 4 wide (the Remote's fixed column count); digits use columns 0-2.
+    cmds.extend([f"DIGIT_{n}" for n in range(10)])
+    cmds.append("PRESET")
+    items = []
+    for i in range(1, 10):
+        y, x = divmod(i - 1, 3)
+        items.append({
+            "type": "text", "text": str(i),
+            "command": {"cmd_id": f"DIGIT_{i}"},
+            "location": {"x": x, "y": y},
+            "size": {"width": 1, "height": 1},
+        })
+    items.append({"type": "text", "text": "Preset", "command": {"cmd_id": "PRESET"}, "location": {"x": 0, "y": 3}, "size": {"width": 1, "height": 1}})
+    items.append({"type": "text", "text": "0", "command": {"cmd_id": "DIGIT_0"}, "location": {"x": 1, "y": 3}, "size": {"width": 1, "height": 1}})
+    return {
+        "page_id": "keypad", "name": "Keypad",
+        "grid": {"width": 4, "height": 4}, "items": items,
+    }
+
+
 class AnthemRemote(RemoteEntity):
 
     def __init__(
@@ -283,7 +369,9 @@ class AnthemRemote(RemoteEntity):
             )
 
         is_x20 = device_config.is_x20_series
-        simple_commands, user_interface = _build_ui(is_x20)
+        simple_commands, user_interface = _build_ui(
+            is_x20, zone_config.zone_number
+        )
 
         features = [Features.SEND_CMD]
         attributes = {Attributes.STATE: States.UNAVAILABLE}
@@ -453,6 +541,13 @@ class AnthemRemote(RemoteEntity):
                 else:
                     _LOG.warning("[%s] Unknown speaker channel: %s", self.id, base)
                     return StatusCodes.NOT_FOUND
+            elif command in _SIM_CODES:
+                if zone != 1:
+                    # Simulated-IR keys are Main-Zone only per both specs.
+                    return StatusCodes.OK
+                success = await self._device._send_command(
+                    f"Z{zone}SIM{_SIM_CODES[command]}"
+                )
             else:
                 _LOG.warning("[%s] Unknown audio command: %s", self.id, command)
                 return StatusCodes.NOT_FOUND
