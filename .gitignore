@@ -16,3 +16,4 @@ simulator/
 .claude/
 knowledge-base/
 *.knowledge.md
+artifacts/

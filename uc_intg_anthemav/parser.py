@@ -14,6 +14,8 @@ from uc_intg_anthemav.models import (
     ParsedMessage,
     SystemModel,
     InputCount,
+    MaxVolume,
+    MasterVolumeScale,
     InputName,
     ZonePower,
     ZoneVolume,
@@ -45,6 +47,15 @@ def parse_message(response: str) -> Optional[ParsedMessage]:
     # System Messages
     if response.startswith(const.RESP_MODEL):
         return SystemModel(model=response[len(const.RESP_MODEL) :].strip())
+
+    # Must precede the zone match: GCMMV carries no Z<zone> prefix.
+    mmv_match = re.match(rf"{const.RESP_MAX_VOL}([-+]?\d+(?:\.\d+)?)", response)
+    if mmv_match:
+        return MaxVolume(max_db=float(mmv_match.group(1)))
+
+    mvs_match = re.match(rf"{const.RESP_MASTER_VOL_SCALE}([01])$", response)
+    if mvs_match:
+        return MasterVolumeScale(is_percent=mvs_match.group(1) == "0")
 
     icn_match = re.match(rf"{const.RESP_INPUT_COUNT}(\d+)", response)
     if icn_match:

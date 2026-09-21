@@ -13,7 +13,7 @@ from ucapi import StatusCodes
 from ucapi.media_player import Attributes, Commands, DeviceClasses, Features, MediaPlayer, States, Options
 from ucapi_framework import MediaPlayerEntity
 
-from uc_intg_anthemav import const
+from uc_intg_anthemav import const, volume as volume_scale
 from uc_intg_anthemav.config import AnthemDeviceConfig, ZoneConfig
 from uc_intg_anthemav.device import AnthemDevice
 
@@ -53,16 +53,11 @@ class AnthemMediaPlayer(MediaPlayerEntity):
             Attributes.SOURCE_LIST: [],
         }
 
-        options = {
-            Options.SIMPLE_COMMANDS: [
-                Commands.ON,
-                Commands.OFF,
-                Commands.VOLUME_UP,
-                Commands.VOLUME_DOWN,
-                Commands.MUTE_TOGGLE,
-                *const.VOLUME_DB_PRESETS.keys(),
-            ]
-        }
+        # The receiver's Maximum Volume (GCMMV) clamps rather than rescales, so
+        # everything above it is dead slider travel. Restricting VOLUME_STEPS to
+        # the reachable percentage makes the core quantize to steps that land on
+        # reachable values, and _to_device_volume() rescales the slider onto them.
+        options = self._build_volume_options()
 
         super().__init__(
             entity_id,
@@ -76,14 +71,97 @@ class AnthemMediaPlayer(MediaPlayerEntity):
 
         self.subscribe_to_device(device)
 
+    def _build_volume_options(self) -> dict:
+        """Entity options derived from the current Maximum Volume ceiling."""
+        max_db = self._device.max_volume_db
+        return {
+            Options.SIMPLE_COMMANDS: [
+                Commands.ON,
+                Commands.OFF,
+                Commands.VOLUME_UP,
+                Commands.VOLUME_DOWN,
+                Commands.MUTE_TOGGLE,
+                *(
+                    cmd
+                    for cmd, db in const.VOLUME_DB_PRESETS.items()
+                    if max_db is None or db <= max_db
+                ),
+            ],
+            Options.VOLUME_STEPS: self._slider_max_percent,
+        }
+
+    def _refresh_volume_options(self) -> None:
+        """Keep options in step with the ceiling instead of freezing them.
+
+        The ceiling may be unknown when the entity is constructed, and the
+        receiver pushes GCMMV unsolicited when it is changed in setup. ucapi
+        serialises entity.options at the moment the core asks for the entity
+        list, so correcting the attribute here means the next fetch sees the
+        right values rather than whatever was true at registration.
+        """
+        rebuilt = self._build_volume_options()
+        if rebuilt != self.options:
+            self.options = rebuilt
+            _LOG.info(
+                "[%s] Volume options updated: volume_steps=%s, %d dB presets",
+                self.id,
+                rebuilt[Options.VOLUME_STEPS],
+                len([c for c in rebuilt[Options.SIMPLE_COMMANDS] if c.startswith("VOLUME_DB")]),
+            )
+
+    @property
+    def _slider_max_percent(self) -> int:
+        """The receiver percentage that the slider's 100 corresponds to.
+
+        In dB mode the receiver's front panel reads in dB, so nothing on the
+        hardware contradicts a rescaled 0-100 and the whole slider is made
+        usable by mapping it onto the reachable range.
+
+        In per cent mode the panel shows the raw ZzPVOL, which is NOT adjusted
+        for the Maximum Volume ceiling - it simply stops at it. Rescaling there
+        would leave the remote reading up to 60 points away from the receiver's
+        own display for the same volume (at a -20 dB ceiling the panel shows
+        40% where a rescaled slider shows 100). The percentage is therefore
+        passed through unchanged, which keeps the two displays in agreement at
+        the cost of inheriting the receiver's own dead travel above the ceiling.
+        """
+        if self._device.volume_scale_is_percent:
+            return 100
+        return self._device.max_volume_percent
+
+    def _to_ui_volume(self, device_percent: float) -> int:
+        """Receiver percentage -> the 0-100 the UC slider works in."""
+        return volume_scale.to_ui(device_percent, self._slider_max_percent)
+
+    def _to_device_volume(self, ui_percent: float) -> int:
+        """UC slider 0-100 -> a receiver percentage below the ceiling."""
+        return volume_scale.to_device(ui_percent, self._slider_max_percent)
+
     async def sync_state(self):
+        self._refresh_volume_options()
         zone_state = self._device.get_zone_state(self._zone_config.zone_number)
         if zone_state.power is None:
             self.update({Attributes.STATE: States.UNAVAILABLE})
             return
 
-        if zone_state.volume_pct is not None:
-            volume_pct = zone_state.volume_pct
+        if (
+            self._device.is_x40_series
+            and not self._device.volume_scale_is_percent
+            and zone_state.volume_db is not None
+        ):
+            # Prefer VOL over PVOL. The receiver pushes VOL on every 0.5 dB VUP/VDN
+            # step but PVOL only when the integer percent changes - which in the
+            # -53..-35 dB band is once every 2 dB, i.e. every fourth press. Driving
+            # the UI from PVOL made the displayed value visibly lag the volume.
+            #
+            # Only valid in dB mode: with Master Volume Scale set to per cent the
+            # receiver reports VOL as (percent - 90) rather than true dB, so PVOL
+            # below - which means the same thing in both modes - is used instead.
+            volume_pct = self._to_ui_volume(
+                volume_scale.db_to_percent_exact(zone_state.volume_db)
+            )
+        elif zone_state.volume_pct is not None:
+            volume_pct = self._to_ui_volume(zone_state.volume_pct)
         else:
             vol_db = zone_state.volume_db if zone_state.volume_db is not None else -90
             volume_pct = max(0, min(100, int(((vol_db + 90) / 90) * 100)))
@@ -126,7 +204,9 @@ class AnthemMediaPlayer(MediaPlayerEntity):
                         volume_db = int((volume_pct * 90 / 100) - 90)
                         success = await self._device.set_volume(volume_db, zone)
                     else:
-                        success = await self._device.set_volume_percent(int(volume_pct), zone)
+                        success = await self._device.set_volume_percent(
+                            self._to_device_volume(volume_pct), zone
+                        )
                     return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                 return StatusCodes.BAD_REQUEST
 

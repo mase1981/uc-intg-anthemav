@@ -45,6 +45,20 @@ class SystemModel(ParsedMessage):
 
 
 @dataclass
+class MaxVolume(ParsedMessage):
+    """Main zone Maximum Volume ceiling (GCMMV)."""
+
+    max_db: float
+
+
+@dataclass
+class MasterVolumeScale(ParsedMessage):
+    """Master Volume Scale (GCMVS): 0 = per cent, 1 = dB."""
+
+    is_percent: bool
+
+
+@dataclass
 class InputCount(ParsedMessage):
     """Number of inputs (ICN)."""
 
