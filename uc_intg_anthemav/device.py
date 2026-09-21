@@ -14,11 +14,13 @@ from collections import defaultdict
 from ucapi_framework import PersistentConnectionDevice
 
 from uc_intg_anthemav.config import AnthemDeviceConfig
-from uc_intg_anthemav import const
+from uc_intg_anthemav import const, volume as volume_scale
 from uc_intg_anthemav.models import (
     ParsedMessage,
     SystemModel,
     InputCount,
+    MaxVolume,
+    MasterVolumeScale,
     InputName,
     ZonePower,
     ZoneVolume,
@@ -50,6 +52,16 @@ class AnthemDevice(PersistentConnectionDevice):
         self._input_names: dict[int, str] = {}
         self._input_count: int = 0
         self._model: str | None = None
+        # Main zone Maximum Volume ceiling (GCMMV). None until queried, and
+        # never queried on x20, where max_volume_percent stays 100 and all
+        # the scaling below collapses to identity.
+        self._max_volume_db: float | None = None
+        # Master Volume Scale (GCMVS). In per cent mode ZzVOL stops reporting
+        # true dB and instead reports (percent - 90), a linear relabelling.
+        # Verified on an MRX 540: at PVOL17 (truly -40 dB) VOL reads -73.0.
+        # Writes to ZzVOL stay in true dB in both modes. Defaults to dB, the
+        # receiver default, so a device that never answers behaves as before.
+        self._volume_scale_is_percent: bool = False
         self._sensor_poll_tasks: dict[int, asyncio.Task] = {}
         # Maps a command string (e.g. "Z1VOL-45") to (attempts_remaining,
         # delay_seconds). Populated by send_with_retry(); drained by
@@ -96,6 +108,10 @@ class AnthemDevice(PersistentConnectionDevice):
             await self._send_command(const.CMD_TX_STATUS_IP)
             await asyncio.sleep(0.05)
             await self._send_command(const.CMD_CONNECTED_STANDBY_ON)
+            await asyncio.sleep(0.05)
+            await self._send_command(const.CMD_MAX_VOL_QUERY)
+            await asyncio.sleep(0.05)
+            await self._send_command(const.CMD_MASTER_VOL_SCALE_QUERY)
         else:
             await self._send_command(const.CMD_STANDBY_IP_CONTROL_ON)
         await asyncio.sleep(0.1)
@@ -331,6 +347,31 @@ class AnthemDevice(PersistentConnectionDevice):
         self.push_update()
 
     @_handle_message.register
+    def _(self, message: MaxVolume) -> None:
+        if self._max_volume_db == message.max_db:
+            return
+        self._max_volume_db = message.max_db
+        _LOG.info(
+            "[%s] Maximum Volume ceiling: %g dB (%d%% of the receiver scale)",
+            self.log_id,
+            message.max_db,
+            self.max_volume_percent,
+        )
+        self.push_update()
+
+    @_handle_message.register
+    def _(self, message: MasterVolumeScale) -> None:
+        if self._volume_scale_is_percent == message.is_percent:
+            return
+        self._volume_scale_is_percent = message.is_percent
+        _LOG.info(
+            "[%s] Master Volume Scale: %s",
+            self.log_id,
+            "per cent (ZzVOL reports percent-90, not true dB)" if message.is_percent else "dB",
+        )
+        self.push_update()
+
+    @_handle_message.register
     def _(self, message: InputCount) -> None:
         self._input_count = message.count
         _LOG.info("[%s] Input count: %d", self.log_id, self._input_count)
@@ -544,6 +585,37 @@ class AnthemDevice(PersistentConnectionDevice):
         self.push_update()
 
     @property
+    def max_volume_db(self) -> float | None:
+        """Maximum Volume ceiling in dB, or None if the receiver hasn't said."""
+        return self._max_volume_db
+
+    @property
+    def max_volume_percent(self) -> int:
+        """Highest receiver percentage (ZzPVOL) that isn't clamped away."""
+        return volume_scale.max_percent(self._max_volume_db)
+
+    @property
+    def volume_scale_is_percent(self) -> bool:
+        """True when the receiver's Master Volume Scale is set to per cent."""
+        return self._volume_scale_is_percent
+
+    def true_volume_db(self, zone: int = 1) -> float | None:
+        """Zone volume in real acoustic dB, whichever scale the receiver uses.
+
+        In dB mode ZzVOL is authoritative and carries 0.5 dB resolution. In per
+        cent mode it is a relabelled percentage, so the true value is recovered
+        from ZzPVOL through the documented taper instead.
+        """
+        zone_state = self._zone_states.get(zone)
+        if zone_state is None:
+            return None
+        if self._volume_scale_is_percent:
+            if zone_state.volume_pct is None:
+                return None
+            return volume_scale.percent_to_db(zone_state.volume_pct)
+        return zone_state.volume_db
+
+    @property
     def is_x20_series(self) -> bool:
         return self._device_config.is_x20_series
 
@@ -574,7 +646,11 @@ class AnthemDevice(PersistentConnectionDevice):
             return self._model
         zone = self._zone_states[1]
         mapping = {
-            "volume": f"{zone.volume_db:g}" if zone.volume_db is not None else None,
+            "volume": (
+                f"{self.true_volume_db(1):g}"
+                if self.true_volume_db(1) is not None
+                else None
+            ),
             "audio_format": zone.audio_format if zone.audio_format != "Unknown" else None,
             "audio_channels": zone.audio_channels if zone.audio_channels != "Unknown" else None,
             "video_resolution": zone.video_resolution if zone.video_resolution != "Unknown" else None,
@@ -665,7 +741,8 @@ class AnthemDevice(PersistentConnectionDevice):
         """Volume up by native 0.5 dB step (x40 VUP) with optimistic update."""
         zone_state = self._zone_states[zone]
         current = zone_state.volume_db if zone_state.volume_db is not None else -50.0
-        zone_state.volume_db = min(10.0, current + 0.5)
+        ceiling = self._max_volume_db if self._max_volume_db is not None else 10.0
+        zone_state.volume_db = min(ceiling, current + 0.5)
         self.push_update()
         return await self._send_command(
             self._get_zone_command(zone, const.CMD_VOLUME_UP)
