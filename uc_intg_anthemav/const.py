@@ -267,3 +267,22 @@ DEFAULT_INPUT_MAP = {
 
 # Default input names list for fallback
 DEFAULT_INPUT_LIST = list(DEFAULT_INPUT_MAP.keys())
+
+# --- Link liveness -------------------------------------------------------
+# The receiver can legitimately stay silent for long stretches while idle, so
+# silence alone is not evidence of a dead link. After this much quiet the
+# message loop sends a cheap query and expects *some* reply; even an !E
+# rejection counts, since any inbound byte proves the socket is alive.
+# Kept at the read timeout this loop has always used, so an idle link is no
+# chattier than it needs to be: one probe every two minutes, logged at debug.
+LINK_IDLE_READ_TIMEOUT = 120.0
+
+# Consecutive unanswered keepalive probes before the link is torn down for
+# reconnect. Three at the timeout above bounds detection at ~6 minutes, which
+# a write failure short-circuits anyway whenever there is traffic to send.
+LINK_KEEPALIVE_MAX_MISSED = 3
+
+# Upper bound on a single write + drain. Without it, a write to a peer that
+# vanished without sending FIN blocks until the kernel exhausts its
+# retransmit budget (tcp_retries2, ~15-20 minutes by default).
+LINK_SEND_TIMEOUT = 10.0

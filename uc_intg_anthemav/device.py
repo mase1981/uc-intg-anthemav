@@ -56,6 +56,9 @@ class AnthemDevice(PersistentConnectionDevice):
         # _process_response when the receiver returns !E<command>.
         self._pending_retries: dict[str, tuple[int, float]] = {}
         self._retry_tasks: set[asyncio.Task] = set()
+        # Set by _send_command() when a write fails; watched by
+        # maintain_connection() so a half-open socket is torn down.
+        self._link_dead = asyncio.Event()
 
     @property
     def identifier(self) -> str:
@@ -82,6 +85,7 @@ class AnthemDevice(PersistentConnectionDevice):
             self._device_config.port,
         )
 
+        self._link_dead.clear()
         self._reader, self._writer = await asyncio.open_connection(
             self._device_config.host, self._device_config.port
         )
@@ -147,9 +151,11 @@ class AnthemDevice(PersistentConnectionDevice):
 
     async def close_connection(self) -> None:
         """Close TCP connection."""
-        task = self._sensor_poll_tasks.pop(1, None)
-        if task:
+        # Every zone, not just zone 1: a leaked task would keep querying
+        # across the reconnect and write to a stale socket.
+        for task in self._sensor_poll_tasks.values():
             task.cancel()
+        self._sensor_poll_tasks.clear()
 
         if self._writer:
             try:
@@ -169,16 +175,23 @@ class AnthemDevice(PersistentConnectionDevice):
 
     async def maintain_connection(self) -> None:
         buffer = ""
+        missed_keepalives = 0
         _LOG.debug("[%s] Message loop started", self.log_id)
 
         while self._reader and not self._reader.at_eof():
+            if self._link_dead.is_set():
+                _LOG.warning("[%s] Link unusable - reconnecting", self.log_id)
+                break
             try:
-                data = await asyncio.wait_for(self._reader.read(1024), timeout=120.0)
+                data = await asyncio.wait_for(
+                    self._reader.read(1024), timeout=const.LINK_IDLE_READ_TIMEOUT
+                )
 
                 if not data:
                     _LOG.warning("[%s] Connection closed by device", self.log_id)
                     break
 
+                missed_keepalives = 0
                 decoded = data.decode("ascii", errors="ignore")
                 buffer += decoded
 
@@ -189,6 +202,19 @@ class AnthemDevice(PersistentConnectionDevice):
                         await self._process_response(line)
 
             except asyncio.TimeoutError:
+                # Silence is normal while the receiver is idle, so prove the
+                # link with a query rather than assuming either way.
+                missed_keepalives += 1
+                if missed_keepalives > const.LINK_KEEPALIVE_MAX_MISSED:
+                    _LOG.warning(
+                        "[%s] %d keepalive probes unanswered - reconnecting",
+                        self.log_id,
+                        const.LINK_KEEPALIVE_MAX_MISSED,
+                    )
+                    break
+                await self._send_command(
+                    self._get_zone_command(1, const.CMD_POWER_QUERY)
+                )
                 continue
             except Exception as err:
                 _LOG.error("[%s] Error in message loop: %s", self.log_id, err)
@@ -204,9 +230,17 @@ class AnthemDevice(PersistentConnectionDevice):
         try:
             cmd_bytes = f"{command}{const.CMD_TERMINATOR}".encode("ascii")
             self._writer.write(cmd_bytes)
-            await self._writer.drain()
+            await asyncio.wait_for(
+                self._writer.drain(), timeout=const.LINK_SEND_TIMEOUT
+            )
             _LOG.debug("[%s] Sent command: %s", self.log_id, command)
             return True
+        except (OSError, asyncio.TimeoutError) as err:
+            # A write to a stream socket does not fail transiently, so flag
+            # the link instead of logging and carrying on against a dead one.
+            _LOG.error("[%s] Error sending command %s: %s", self.log_id, command, err)
+            self._link_dead.set()
+            return False
         except Exception as err:
             _LOG.error("[%s] Error sending command %s: %s", self.log_id, command, err)
             return False
@@ -371,7 +405,8 @@ class AnthemDevice(PersistentConnectionDevice):
             if not state.power:
                 return
             for q in poll_queries:
-                await self._send_command(self._get_zone_command(zone, q))
+                if not await self._send_command(self._get_zone_command(zone, q)):
+                    return
                 await asyncio.sleep(0.05)
 
     @_handle_message.register
