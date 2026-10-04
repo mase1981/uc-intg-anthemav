@@ -412,8 +412,10 @@ class AnthemDevice(PersistentConnectionDevice):
         await asyncio.sleep(2.0)
         _LOG.debug("[%s] Querying zone %d state after power on", self.log_id, zone)
         await self.query_status(zone)
-        # Start sensor polling - receiver doesn't push AIF/AIC/VIR updates
-        self._start_sensor_poll(zone)
+        # Start sensor polling - receiver doesn't push AIF/AIC/VIR updates.
+        # The audio/video sensors are Main Zone only, so other zones don't poll.
+        if zone == 1:
+            self._start_sensor_poll(zone)
 
     async def _query_after_input_change(self, zone: int) -> None:
         await asyncio.sleep(2.0)

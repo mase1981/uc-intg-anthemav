@@ -5,6 +5,7 @@ Anthem Remote Entity.
 :license: MPL-2.0, see LICENSE for more details.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -411,14 +412,46 @@ class AnthemRemote(RemoteEntity):
             zone = self._zone_config.zone_number
             is_x20 = self._device.is_x20_series
 
-            if cmd_id != Commands.SEND_CMD:
+            if cmd_id == Commands.SEND_CMD:
+                if not params or not params.get("command"):
+                    return StatusCodes.BAD_REQUEST
+                commands = [str(params["command"])]
+            elif cmd_id == Commands.SEND_CMD_SEQUENCE:
+                sequence = (params or {}).get("sequence")
+                if isinstance(sequence, str):
+                    sequence = sequence.split(",")
+                commands = [str(c).strip() for c in sequence or [] if str(c).strip()]
+                if not commands:
+                    return StatusCodes.BAD_REQUEST
+            else:
                 _LOG.warning("[%s] Unsupported command type: %s", self.id, cmd_id)
                 return StatusCodes.NOT_FOUND
 
-            if not params or "command" not in params:
+            try:
+                repeat = max(1, int((params or {}).get("repeat") or 1))
+                delay = max(0, int((params or {}).get("delay") or 0)) / 1000
+            except (TypeError, ValueError):
                 return StatusCodes.BAD_REQUEST
 
-            command = params["command"]
+            result = StatusCodes.OK
+            first = True
+            for command in commands:
+                for _ in range(repeat):
+                    if not first and delay:
+                        await asyncio.sleep(delay)
+                    first = False
+                    result = await self._run_command(command, zone, is_x20)
+                    if result != StatusCodes.OK:
+                        return result
+            return result
+
+        except Exception as err:
+            _LOG.error("[%s] Error executing command %s: %s", self.id, cmd_id, err)
+            return StatusCodes.SERVER_ERROR
+
+    async def _run_command(self, command: str, zone: int, is_x20: bool) -> StatusCodes:
+        """Run one simple command."""
+        try:
             success = False
 
             alm_map = _ALM_X20 if is_x20 else _ALM_X40
@@ -488,12 +521,13 @@ class AnthemRemote(RemoteEntity):
                 if is_x20:
                     return StatusCodes.OK
                 success = await self._device.set_osd_info(1)
-            elif command == "ARC_ON":
+            elif command in ("ARC_ON", "ARC_OFF"):
+                # x40: ARC is a per-input setting, so the current input must be known.
                 input_num = self._device.get_zone_state(zone).input_number
-                success = await self._device.set_arc(True, input_num)
-            elif command == "ARC_OFF":
-                input_num = self._device.get_zone_state(zone).input_number
-                success = await self._device.set_arc(False, input_num)
+                if not is_x20 and input_num is None:
+                    _LOG.warning("[%s] %s: current input not known yet", self.id, command)
+                    return StatusCodes.BAD_REQUEST
+                success = await self._device.set_arc(command == "ARC_ON", input_num or 1)
             elif command == "BRIGHTNESS_UP":
                 if is_x20:
                     success = await self._device.set_front_panel_brightness(3)
@@ -559,7 +593,7 @@ class AnthemRemote(RemoteEntity):
             return StatusCodes.OK
 
         except Exception as err:
-            _LOG.error("[%s] Error executing command %s: %s", self.id, cmd_id, err)
+            _LOG.error("[%s] Error executing command %s: %s", self.id, command, err)
             return StatusCodes.SERVER_ERROR
 
     @property
